@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Client {
+  id          String   @id @default(cuid())
+  name        String
+  gstin       String   @unique
+  gstUsername String
+  email       String
+  phone       String?
+  stateCode   String
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sessions  AuthSession[]
+  notices   Notice[]
+  fetchLogs FetchLog[]
+}
+
+model AuthSession {
+  id              String   @id @default(cuid())
+  clientId        String
+  txn             String
+  ipAddress       String
+  isActive        Boolean  @default(true)
+  authError       String?
+  createdAt       DateTime @default(now())
+  lastRefreshedAt DateTime @default(now())
+  expiresAt       DateTime
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model Notice {
+  id          String   @id @default(cuid())
+  clientId    String
+  refId       String
+  noticeType  String?
+  section     String?
+  taxPeriod   String?
+  dueDate     String?
+  issuedDate  String?
+  description String?
+  status      String?
+  isNew       Boolean  @default(true)
+  rawData     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, refId])
+}
+
+model FetchLog {
+  id           String   @id @default(cuid())
+  clientId     String
+  fetchedAt    DateTime @default(now())
+  noticesFound Int      @default(0)
+  newNotices   Int      @default(0)
+  status       String
+  errorMessage String?
+  rawResponse  String?  // Full JSON / response from GST API for debugging
+  logType      String   @default("notice_fetch")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
