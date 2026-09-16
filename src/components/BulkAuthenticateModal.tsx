@@ -59,6 +59,11 @@ export default function BulkAuthenticateModal({
   const [copiedFailed, setCopiedFailed] = useState(false)
   const [copiedPending, setCopiedPending] = useState(false)
 
+  const [triggerStatusText, setTriggerStatusText] = useState('')
+  const [triggeredCount, setTriggeredCount] = useState(0)
+  const [totalToTrigger, setTotalToTrigger] = useState(0)
+  const [isTriggering, setIsTriggering] = useState(false)
+
   const isCancelledRef = useRef(false)
   const pendingRef = useRef<BulkPendingClient[]>([])
   pendingRef.current = pendingList
@@ -90,49 +95,51 @@ export default function BulkAuthenticateModal({
     async function runScanLoop() {
       while (!isCancelledRef.current && phase === 'listening') {
         const currentPending = pendingRef.current
-        if (currentPending.length === 0) {
-          // If no pending left (all auto-authenticated)
+        if (currentPending.length === 0 && !isTriggering) {
+          // If no pending left and done triggering (all auto-authenticated)
           setPhase('finished')
           setActiveTab('authenticated')
           break
         }
 
-        try {
-          const res = await fetch('/api/auth/bulk-authenticate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'scan',
-              pendingClients: currentPending,
-            }),
-          })
+        if (currentPending.length > 0) {
+          try {
+            const res = await fetch('/api/auth/bulk-authenticate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'scan',
+                pendingClients: currentPending,
+              }),
+            })
 
-          const data = await res.json()
+            const data = await res.json()
 
-          if (isCancelledRef.current) break
+            if (isCancelledRef.current) break
 
-          if (res.ok && data.success) {
-            const newlyAuth: BulkAuthenticatedClient[] = data.newlyAuthenticated || []
-            const stillPend: BulkPendingClient[] = data.stillPending || []
+            if (res.ok && data.success) {
+              const newlyAuth: BulkAuthenticatedClient[] = data.newlyAuthenticated || []
+              const stillPend: BulkPendingClient[] = data.stillPending || []
 
-            if (newlyAuth.length > 0) {
-              setAuthenticatedList((prev) => [...prev, ...newlyAuth])
-              setPendingList(stillPend)
-              toast.success(`✨ Authenticated ${newlyAuth.length} client(s): ${newlyAuth.map(a => a.clientName).join(', ')}`)
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new Event('stats-updated'))
+              if (newlyAuth.length > 0) {
+                setAuthenticatedList((prev) => [...prev, ...newlyAuth])
+                setPendingList(stillPend)
+                toast.success(`✨ Authenticated ${newlyAuth.length} client(s): ${newlyAuth.map(a => a.clientName).join(', ')}`)
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new Event('stats-updated'))
+                }
+                onSuccess()
               }
-              onSuccess()
-            }
 
-            if (stillPend.length === 0 && (newlyAuth.length > 0 || currentPending.length > 0)) {
-              setPhase('finished')
-              setActiveTab('authenticated')
-              break
+              if (stillPend.length === 0 && !isTriggering && (newlyAuth.length > 0 || currentPending.length > 0)) {
+                setPhase('finished')
+                setActiveTab('authenticated')
+                break
+              }
             }
+          } catch {
+            // Ignore transient errors
           }
-        } catch {
-          // Ignore transient errors
         }
 
         if (isCancelledRef.current) break
@@ -145,7 +152,7 @@ export default function BulkAuthenticateModal({
     return () => {
       isCancelledRef.current = true
     }
-  }, [phase, onSuccess])
+  }, [phase, isTriggering, onSuccess])
 
   async function handleStartBulkAuth() {
     setPhase('initiating')
@@ -153,54 +160,93 @@ export default function BulkAuthenticateModal({
     setAuthenticatedList([])
     setPendingList([])
     setFailedList([])
+    setTriggeredCount(0)
+    setTotalToTrigger(0)
+    setIsTriggering(true)
     isCancelledRef.current = false
 
     try {
-      toast.info('Sending OTP requests for unauthenticated / pending clients...')
-      const res = await fetch('/api/auth/bulk-authenticate', {
+      setTriggerStatusText('Checking client accounts and active sessions...')
+      const targetRes = await fetch('/api/auth/bulk-authenticate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'initiate' }),
+        body: JSON.stringify({ action: 'get_targets' }),
       })
+      const targetData = await targetRes.json()
 
-      const data = await res.json()
-
-      if (!res.ok) {
-        toast.error(data.error || 'Failed to initiate bulk authentication')
+      if (!targetRes.ok) {
+        toast.error(targetData.error || 'Failed to identify target clients')
         setPhase('initial')
+        setIsTriggering(false)
         return
       }
 
-      setAlreadyHealthyCount(data.alreadyAuthenticatedCount ?? 0)
+      setAlreadyHealthyCount(targetData.alreadyAuthenticatedCount ?? 0)
+      const targets = targetData.targets || []
 
-      const failed = (data.failedTriggers || []) as BulkFailedTriggerClient[]
-      setFailedList(failed)
-
-      if (failed.length > 0) {
-        toast.warning(`⚠️ ${failed.length} client(s) failed OTP request (e.g. API Access disabled on GST Portal)`)
-      }
-
-      if (!data.triggeredClients || data.triggeredClients.length === 0) {
-        if (failed.length > 0) {
-          toast.error(`All ${failed.length} unauthenticated clients failed OTP request. Check GST Portal API Access.`)
-          setPhase('finished')
-          setActiveTab('failed')
-        } else {
-          toast.info(data.message || 'All clients already have valid active sessions.')
-          setPhase('finished')
-        }
-        setTotalTriggered(0)
+      if (targets.length === 0) {
+        toast.info('All clients already have healthy active 6-hour sessions!')
+        setPhase('finished')
+        setActiveTab('authenticated')
+        setIsTriggering(false)
         return
       }
 
-      setTotalTriggered(data.triggeredClients.length)
-      setPendingList(data.triggeredClients)
+      setTotalToTrigger(targets.length)
+      // Switch immediately to listening phase so live UI, countdown & Gmail scanning start right away!
       setPhase('listening')
       setActiveTab('pending')
-      toast.success(`Sent OTP requests for ${data.triggeredClients.length} clients! Scanning Gmail for 180s...`)
-    } catch {
+
+      // Process in live batches of 2 clients with progress updates
+      const BATCH_SIZE = 2
+      let runningTriggered = 0
+
+      for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+        if (isCancelledRef.current) break
+        const chunk = targets.slice(i, i + BATCH_SIZE)
+        const chunkNames = chunk.map((c: any) => c.name).join(', ')
+
+        setTriggerStatusText(`Requesting OTP for: ${chunkNames} (${i + 1} of ${targets.length})...`)
+
+        try {
+          const batchRes = await fetch('/api/auth/bulk-authenticate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'trigger_batch',
+              clientIds: chunk.map((c: any) => c.id),
+            }),
+          })
+          const batchData = await batchRes.json()
+
+          if (batchRes.ok && batchData.success) {
+            const newlyTriggered: BulkPendingClient[] = batchData.triggeredClients || []
+            const newlyFailed: BulkFailedTriggerClient[] = batchData.failedTriggers || []
+
+            if (newlyTriggered.length > 0) {
+              setPendingList((prev) => [...prev, ...newlyTriggered])
+              runningTriggered += newlyTriggered.length
+              setTotalTriggered(runningTriggered)
+            }
+
+            if (newlyFailed.length > 0) {
+              setFailedList((prev) => [...prev, ...newlyFailed])
+            }
+          }
+        } catch (err) {
+          console.error('Error triggering batch:', err)
+        }
+
+        setTriggeredCount(Math.min(i + chunk.length, targets.length))
+      }
+
+      setIsTriggering(false)
+      setTriggerStatusText(`Finished requesting OTPs for all ${targets.length} clients. Scanning Gmail...`)
+    } catch (error) {
+      console.error('Error in bulk auth:', error)
       toast.error('Network error initiating bulk authentication')
       setPhase('initial')
+      setIsTriggering(false)
     }
   }
 
@@ -325,10 +371,10 @@ export default function BulkAuthenticateModal({
           <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
             <Loader2 size={36} className="animate-spin" style={{ margin: '0 auto 1rem', color: 'rgb(124, 58, 237)' }} />
             <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: '0 0 0.5rem' }}>
-              Requesting OTPs from GST System...
+              Preparing Bulk Authentication...
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'rgb(100, 116, 139)', margin: 0 }}>
-              Checking unauthenticated clients and requesting official OTPs via WhiteBooks API...
+              {triggerStatusText || 'Identifying unauthenticated accounts and checking active sessions...'}
             </p>
           </div>
         )}
@@ -386,6 +432,37 @@ export default function BulkAuthenticateModal({
                 </div>
               )}
             </div>
+
+            {/* Live OTP Dispatch Progress */}
+            {isTriggering && (
+              <div
+                style={{
+                  background: 'rgb(245, 243, 255)',
+                  border: '1px solid rgb(221, 214, 254)',
+                  borderRadius: '0.5rem',
+                  padding: '0.75rem 1rem',
+                  marginBottom: '0.75rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: 'rgb(109, 40, 217)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>{triggerStatusText}</span>
+                  </div>
+                  <span>{triggeredCount} / {totalToTrigger}</span>
+                </div>
+                <div style={{ width: '100%', height: '6px', background: 'rgb(233, 213, 255)', borderRadius: '9999px', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      height: '100%',
+                      background: 'rgb(124, 58, 237)',
+                      width: `${Math.round((triggeredCount / (totalToTrigger || 1)) * 100)}%`,
+                      transition: 'width 0.3s ease',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Alert banner if clients failed to trigger */}
             {failedList.length > 0 && (

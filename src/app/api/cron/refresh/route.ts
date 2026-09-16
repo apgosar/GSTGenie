@@ -21,124 +21,146 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date()
-  // Refresh if last refreshed more than 5 hours ago (or expiring within 1 hour)
-  const thresholdTime = new Date(now.getTime() - 5 * 60 * 60 * 1000)
 
-  console.log(`[Cron Refresh] Starting automated token refresh cycle at ${now.toISOString()}...`)
+  console.log(`[Cron Refresh] Starting universal automated token refresh cycle at ${now.toISOString()}...`)
 
   try {
-    const sessions = await prisma.authSession.findMany({
+    // Find all active sessions across all clients by default (no lastRefreshedAt filter)
+    const rawSessions = await prisma.authSession.findMany({
       where: {
         isActive: true,
-        OR: [
-          { lastRefreshedAt: { lt: thresholdTime } },
-          { expiresAt: { lt: new Date(now.getTime() + 60 * 60 * 1000) } },
-        ],
       },
       include: {
         client: true,
       },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    // De-duplicate to latest active session per client
+    const seenClientIds = new Set<string>()
+    const sessions = rawSessions.filter((s) => {
+      if (seenClientIds.has(s.clientId)) return false
+      seenClientIds.add(s.clientId)
+      return true
     })
 
     if (sessions.length === 0) {
-      console.log('[Cron Refresh] No sessions need refreshing right now.')
+      console.log('[Cron Refresh] No active sessions found to refresh.')
       return NextResponse.json({
         success: true,
-        message: 'No sessions need refreshing.',
+        message: 'No active sessions found.',
         totalChecked: 0,
         refreshedCount: 0,
       })
     }
 
-    console.log(`[Cron Refresh] Found ${sessions.length} session(s) to refresh.`)
+    console.log(`[Cron Refresh] Found ${sessions.length} active session(s) to refresh across clients.`)
 
     let refreshedCount = 0
     let failedCount = 0
     const results: any[] = []
 
-    for (const session of sessions) {
-      const { client } = session
-      const stateCode = getStateCodeFromGSTIN(client.gstin) || client.stateCode || client.gstin.slice(0, 2)
+    // Process in concurrent batches of 5 for speed and timeout avoidance
+    const BATCH_SIZE = 5
+    for (let i = 0; i < sessions.length; i += BATCH_SIZE) {
+      const chunk = sessions.slice(i, i + BATCH_SIZE)
+      await Promise.all(
+        chunk.map(async (session) => {
+          const { client } = session
+          const stateCode = getStateCodeFromGSTIN(client.gstin) || client.stateCode || client.gstin.slice(0, 2)
 
-      try {
-        const result = await refreshToken(
-          DEFAULT_CA_EMAIL,
-          session.txn,
-          client.gstUsername,
-          stateCode,
-          DEFAULT_CA_IP
-        )
+          try {
+            const result = await refreshToken(
+              DEFAULT_CA_EMAIL,
+              session.txn,
+              client.gstUsername,
+              stateCode,
+              DEFAULT_CA_IP
+            )
 
-        if (result.success) {
-          const expiresAt = addHours(now, 6)
-          await prisma.authSession.update({
-            where: { id: session.id },
-            data: {
-              lastRefreshedAt: now,
-              expiresAt,
-              authError: null,
-            },
-          })
+            if (result.success) {
+              const expiresAt = addHours(now, 6)
+              await prisma.authSession.update({
+                where: { id: session.id },
+                data: {
+                  lastRefreshedAt: now,
+                  expiresAt,
+                  authError: null,
+                },
+              })
 
-          await prisma.client.update({
-            where: { id: client.id },
-            data: { status: 'authenticated' },
-          })
+              await prisma.client.update({
+                where: { id: client.id },
+                data: { status: 'authenticated' },
+              })
 
-          await prisma.fetchLog.create({
-            data: {
-              clientId: client.id,
-              status: 'success',
-              logType: 'token_refresh',
-              noticesFound: 0,
-              newNotices: 0,
-              rawResponse: JSON.stringify({
-                action: 'automated_cron_refresh',
-                result,
-                refreshedAt: now,
-                newExpiresAt: expiresAt,
-              }),
-            },
-          })
+              await prisma.fetchLog.create({
+                data: {
+                  clientId: client.id,
+                  status: 'success',
+                  logType: 'token_refresh',
+                  noticesFound: 0,
+                  newNotices: 0,
+                  rawResponse: JSON.stringify({
+                    action: 'automated_cron_refresh',
+                    result,
+                    refreshedAt: now,
+                    newExpiresAt: expiresAt,
+                  }),
+                },
+              })
 
-          refreshedCount++
-          results.push({ clientId: client.id, name: client.name, status: 'success' })
-        } else {
-          await prisma.authSession.update({
-            where: { id: session.id },
-            data: {
-              isActive: false,
-              authError: result.message || 'Token refresh failed',
-            },
-          })
+              refreshedCount++
+              results.push({ clientId: client.id, name: client.name, status: 'success' })
+            } else {
+              const errMsg = result.message || 'Token refresh failed'
+              const isInvalidSession =
+                errMsg.includes('AUTH4033') ||
+                errMsg.includes('Invalid Session') ||
+                errMsg.includes('Not found')
 
-          await prisma.client.update({
-            where: { id: client.id },
-            data: { status: 'error' },
-          })
+              // Only deactivate if session was genuinely expired on GST portal
+              if (isInvalidSession) {
+                await prisma.authSession.update({
+                  where: { id: session.id },
+                  data: {
+                    isActive: false,
+                    authError: errMsg,
+                  },
+                })
 
-          await prisma.fetchLog.create({
-            data: {
-              clientId: client.id,
-              status: 'error',
-              logType: 'token_refresh',
-              errorMessage: result.message,
-              noticesFound: 0,
-              newNotices: 0,
-              rawResponse: JSON.stringify({
-                action: 'automated_cron_refresh',
-                result,
-              }),
-            },
-          })
+                await prisma.client.update({
+                  where: { id: client.id },
+                  data: { status: 'error' },
+                })
+              }
 
-          failedCount++
-          results.push({ clientId: client.id, name: client.name, status: 'error', error: result.message })
-        }
-      } catch (err) {
-        failedCount++
-        console.error(`[Cron Refresh] Error refreshing ${client.name}:`, err)
-      }
+              await prisma.fetchLog.create({
+                data: {
+                  clientId: client.id,
+                  status: 'error',
+                  logType: 'token_refresh',
+                  errorMessage: errMsg,
+                  noticesFound: 0,
+                  newNotices: 0,
+                  rawResponse: JSON.stringify({
+                    action: 'automated_cron_refresh',
+                    result,
+                  }),
+                },
+              })
+
+              failedCount++
+              results.push({ clientId: client.id, name: client.name, status: 'error', error: errMsg })
+            }
+          } catch (err) {
+            failedCount++
+            const errMsg = err instanceof Error ? err.message : 'Network error'
+            console.error(`[Cron Refresh] Error refreshing ${client.name}:`, err)
+            results.push({ clientId: client.id, name: client.name, status: 'error', error: errMsg })
+          }
+        })
+      )
     }
 
     console.log(`[Cron Refresh] Completed: ${refreshedCount} refreshed, ${failedCount} failed.`)

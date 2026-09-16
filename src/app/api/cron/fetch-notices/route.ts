@@ -64,13 +64,29 @@ export async function POST(req: NextRequest) {
     })
 
     if (clients.length === 0) {
-      console.log('[Cron NoticeFetch] No authenticated clients with active sessions to fetch.')
+      console.log('[Cron NoticeFetch] No authenticated clients with active sessions. Sending alert email report...')
+      const emailResult = await sendNoticeRunReportEmail({
+        runDate: now,
+        totalClientsChecked: 0,
+        totalNoticesFound: 0,
+        totalNewNotices: 0,
+        newNoticeItems: [],
+        failedClients: [
+          {
+            clientName: 'All Client Sessions Expired / Inactive',
+            gstin: 'Action Needed',
+            error: '0 active sessions available at scheduled run. Please open GST Genie and click "1-Click Authenticate All" to re-authenticate accounts.',
+          },
+        ],
+      })
+
       return NextResponse.json({
         success: true,
-        message: 'No authenticated clients with active sessions.',
+        message: 'No authenticated clients with active sessions. Alert report sent to CA emails.',
         clientsProcessed: 0,
         totalNoticesFound: 0,
         totalNewNotices: 0,
+        emailReport: emailResult,
       })
     }
 
@@ -82,9 +98,14 @@ export async function POST(req: NextRequest) {
     const newNoticeItems: any[] = []
     const failedClients: any[] = []
 
-    for (const client of clients) {
-      const session = client.sessions[0]
-      if (!session?.txn) continue
+    // Process clients in parallel batches of 4 for speed and reliability
+    const BATCH_SIZE = 4
+    for (let i = 0; i < clients.length; i += BATCH_SIZE) {
+      const chunk = clients.slice(i, i + BATCH_SIZE)
+      await Promise.all(
+        chunk.map(async (client) => {
+          const session = client.sessions[0]
+          if (!session?.txn) return
 
       const stateCode = getStateCodeFromGSTIN(client.gstin) || client.stateCode || client.gstin.slice(0, 2)
 
@@ -115,7 +136,7 @@ export async function POST(req: NextRequest) {
             gstin: client.gstin,
             error: result.message || 'Notice fetch failed',
           })
-          continue
+          return
         }
 
         // Detect new notices
@@ -242,9 +263,11 @@ export async function POST(req: NextRequest) {
           error: err instanceof Error ? err.message : 'Network error',
         })
       }
-    }
+    })
+  )
+}
 
-    console.log(`[Cron NoticeFetch] Completed: ${clients.length} processed, ${totalNoticesFound} notices found (${totalNewNotices} new).`)
+console.log(`[Cron NoticeFetch] Completed: ${clients.length} processed, ${totalNoticesFound} notices found (${totalNewNotices} new).`)
 
     // Dispatch formatted email report
     const emailResult = await sendNoticeRunReportEmail({

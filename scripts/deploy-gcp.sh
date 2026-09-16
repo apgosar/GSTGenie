@@ -106,6 +106,7 @@ gcloud scheduler jobs create http gst-token-refresh \
   --time-zone "Asia/Kolkata" \
   --location "$REGION" \
   --project "$PROJECT_ID" \
+  --attempt-deadline "300s" \
   --description "Automated GST 5-hour Token Refresh"
 
 # Job 2: Weekly notice fetch on Mondays at 10:00 AM IST
@@ -118,6 +119,7 @@ gcloud scheduler jobs create http gst-notice-fetch \
   --time-zone "Asia/Kolkata" \
   --location "$REGION" \
   --project "$PROJECT_ID" \
+  --attempt-deadline "300s" \
   --description "Automated Weekly GST Notice Fetch & Email Report"
 
 echo ""

@@ -32,7 +32,203 @@ export async function POST(req: NextRequest) {
     const { action = 'initiate', pendingClients = [] } = body
 
     // -------------------------------------------------------------
-    // ACTION 1: INITIATE OTP REQUESTS (Only for Unauthenticated/Pending)
+    // ACTION 0: GET TARGETS (Instant query for clients needing OTP)
+    // -------------------------------------------------------------
+    if (action === 'get_targets') {
+      const now = new Date()
+      const clients = await prisma.client.findMany({
+        include: {
+          sessions: {
+            where: { isActive: true, expiresAt: { gt: now } },
+            take: 1,
+          },
+        },
+        orderBy: { name: 'asc' },
+      })
+
+      const targetClients = clients
+        .filter((c) => c.status !== 'authenticated' || c.sessions.length === 0)
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          gstin: c.gstin,
+          gstUsername: c.gstUsername,
+          stateCode: getStateCodeFromGSTIN(c.gstin) || c.stateCode || c.gstin.slice(0, 2),
+        }))
+
+      return NextResponse.json({
+        success: true,
+        targets: targetClients,
+        totalTargets: targetClients.length,
+        alreadyAuthenticatedCount: clients.length - targetClients.length,
+      })
+    }
+
+    // -------------------------------------------------------------
+    // ACTION: TRIGGER BATCH (Processes a small batch of 1-3 clients with live feedback)
+    // -------------------------------------------------------------
+    if (action === 'trigger_batch') {
+      const { clientIds = [] } = body
+      const targetIds: string[] = Array.isArray(clientIds) ? clientIds : [body.clientId].filter(Boolean)
+      const now = new Date()
+
+      const clients = await prisma.client.findMany({
+        where: { id: { in: targetIds } },
+      })
+
+      const triggeredClients: BulkPendingClient[] = []
+      const failedTriggers: any[] = []
+
+      for (const client of clients) {
+        const stateCode = getStateCodeFromGSTIN(client.gstin) || client.stateCode || client.gstin.slice(0, 2)
+
+        try {
+          const otpRes = await requestOTP(DEFAULT_CA_EMAIL, client.gstUsername, stateCode, DEFAULT_CA_IP)
+
+          if (!otpRes.success || !otpRes.txn) {
+            const rawMsg = otpRes.message || 'OTP request rejected by WhiteBooks'
+            const isApiAccessDisabled =
+              rawMsg.includes('AUTH002') ||
+              rawMsg.includes('AUTH_002') ||
+              /disabled API access/i.test(rawMsg) ||
+              /not been allowed access/i.test(rawMsg)
+
+            const formattedError = isApiAccessDisabled
+              ? `API access disabled on GST Portal. Taxpayer must enable 'Manage API Access' on services.gst.gov.in`
+              : rawMsg
+
+            await prisma.client.update({
+              where: { id: client.id },
+              data: { status: 'error' },
+            }).catch(() => {})
+
+            await prisma.fetchLog.create({
+              data: {
+                clientId: client.id,
+                status: 'error',
+                logType: 'otp_request',
+                errorMessage: formattedError,
+                rawResponse: JSON.stringify({
+                  request: {
+                    endpoint: 'GET /authentication/otprequest',
+                    email: DEFAULT_CA_EMAIL,
+                    gst_username: client.gstUsername,
+                    state_cd: stateCode,
+                    ip_address: DEFAULT_CA_IP,
+                  },
+                  response: {
+                    error: formattedError,
+                    rawError: rawMsg,
+                    data: otpRes.raw,
+                    rawBody: otpRes.rawText,
+                  },
+                  isApiAccessDisabled,
+                }),
+              },
+            }).catch(() => {})
+
+            failedTriggers.push({
+              clientId: client.id,
+              clientName: client.name,
+              gstin: client.gstin,
+              gstUsername: client.gstUsername,
+              error: formattedError,
+              rawError: rawMsg,
+              isApiAccessDisabled,
+            })
+            continue
+          }
+
+          // Deactivate old sessions
+          await prisma.authSession.updateMany({
+            where: { clientId: client.id, isActive: true },
+            data: { isActive: false },
+          })
+
+          // Create pending session
+          const session = await prisma.authSession.create({
+            data: {
+              clientId: client.id,
+              txn: otpRes.txn,
+              ipAddress: DEFAULT_CA_IP,
+              isActive: false,
+              expiresAt: addHours(now, 6),
+            },
+          })
+
+          await prisma.client.update({
+            where: { id: client.id },
+            data: { status: 'pending' },
+          })
+
+          await prisma.fetchLog.create({
+            data: {
+              clientId: client.id,
+              status: 'success',
+              logType: 'otp_request',
+              errorMessage: null,
+              rawResponse: JSON.stringify({
+                request: {
+                  endpoint: 'GET /authentication/otprequest',
+                  email: DEFAULT_CA_EMAIL,
+                  gst_username: client.gstUsername,
+                  state_cd: stateCode,
+                  ip_address: DEFAULT_CA_IP,
+                },
+                response: {
+                  txn: otpRes.txn,
+                  message: 'OTP sent successfully to taxpayer credentials',
+                },
+              }),
+            },
+          }).catch(() => {})
+
+          triggeredClients.push({
+            clientId: client.id,
+            clientName: client.name,
+            gstin: client.gstin,
+            gstUsername: client.gstUsername,
+            txn: otpRes.txn,
+            sessionId: session.id,
+            stateCode,
+          })
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : 'Network error'
+          await prisma.client.update({
+            where: { id: client.id },
+            data: { status: 'error' },
+          }).catch(() => {})
+
+          await prisma.fetchLog.create({
+            data: {
+              clientId: client.id,
+              status: 'error',
+              logType: 'otp_request',
+              errorMessage: errMsg,
+            },
+          }).catch(() => {})
+
+          failedTriggers.push({
+            clientId: client.id,
+            clientName: client.name,
+            gstin: client.gstin,
+            gstUsername: client.gstUsername,
+            error: errMsg,
+            rawError: errMsg,
+            isApiAccessDisabled: false,
+          })
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        triggeredClients,
+        failedTriggers,
+      })
+    }
+
+    // -------------------------------------------------------------
+    // ACTION 1: INITIATE OTP REQUESTS (Legacy batch fallback)
     // -------------------------------------------------------------
     if (action === 'initiate') {
       const now = new Date()

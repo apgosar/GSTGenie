@@ -183,6 +183,7 @@ if ($serviceUrl) {
     --time-zone "Asia/Kolkata" `
     --location $Region `
     --project $ProjectId `
+    --attempt-deadline "300s" `
     --description "Automated GST 5-hour Token Refresh"
 
   Write-Host "[OK] Scheduled: Token Refresh every 5 hours (0 */5 * * *)" -ForegroundColor Green
@@ -201,6 +202,7 @@ if ($serviceUrl) {
     --time-zone "Asia/Kolkata" `
     --location $Region `
     --project $ProjectId `
+    --attempt-deadline "300s" `
     --description "Automated Weekly GST Notice Fetch & Email Report"
 
   Write-Host "[OK] Scheduled: Notice Fetch & Report weekly on Mondays at 10:00 AM IST" -ForegroundColor Green
