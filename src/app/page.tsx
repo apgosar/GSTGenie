@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { Users, Bell, Shield, AlertTriangle, RefreshCw, Loader2, Plus, Zap, ServerCrash } from 'lucide-react'
+import { Users, Bell, Shield, AlertTriangle, RefreshCw, Loader2, Plus, Zap, ServerCrash, X } from 'lucide-react'
 import Link from 'next/link'
 import StatsCard from '@/components/StatsCard'
 import NoticeTable from '@/components/NoticeTable'
@@ -59,6 +59,7 @@ export default function Dashboard() {
   const [showBulkAuth, setShowBulkAuth] = useState(false)
   const [checkingPortal, setCheckingPortal] = useState(false)
   const [portalStatusResult, setPortalStatusResult] = useState<{ online: boolean; message: string; errorCode?: string } | null>(null)
+  const [dismissOutageBanner, setDismissOutageBanner] = useState(false)
 
   async function checkPortalStatus() {
     setCheckingPortal(true)
@@ -68,6 +69,7 @@ export default function Dashboard() {
       setPortalStatusResult(data)
       if (data.online) {
         toast.success('GST Portal is online! You can now authenticate.')
+        await loadData()
       } else {
         toast.error(`GST Portal is down: ${data.message}`)
       }
@@ -186,9 +188,10 @@ export default function Dashboard() {
       <ScheduledTaskCountdown />
 
       {/* GST Portal Outage Banner */}
-      {stats?.gstPortalIssue?.isDetected ? (
+      {stats?.gstPortalIssue?.isDetected && !dismissOutageBanner ? (
         <div
           style={{
+            position: 'relative',
             background: 'rgb(254, 243, 199)',
             border: '1.5px solid rgb(245, 158, 11)',
             borderRadius: '0.75rem',
@@ -197,6 +200,24 @@ export default function Dashboard() {
             boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
           }}
         >
+          <button
+            type="button"
+            onClick={() => setDismissOutageBanner(true)}
+            style={{
+              position: 'absolute',
+              top: '0.75rem',
+              right: '0.75rem',
+              background: 'transparent',
+              border: 'none',
+              color: 'rgb(180, 83, 9)',
+              cursor: 'pointer',
+              padding: '0.25rem',
+              borderRadius: '0.25rem',
+            }}
+            title="Dismiss banner"
+          >
+            <X size={16} />
+          </button>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem' }}>
               <div

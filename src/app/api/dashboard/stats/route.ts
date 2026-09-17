@@ -48,12 +48,12 @@ export async function GET() {
       },
     })
 
-    // Detect government GST Portal issues / outages from recent logs (within last 12 hours)
-    const twelveHoursAgo = new Date(now.getTime() - 12 * 60 * 60 * 1000)
+    // Detect government GST Portal issues / outages from recent logs (within last 30 minutes)
+    const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000)
     const recentErrors = await prisma.fetchLog.findMany({
       where: {
         status: 'error',
-        fetchedAt: { gte: twelveHoursAgo },
+        fetchedAt: { gte: thirtyMinutesAgo },
       },
       orderBy: { fetchedAt: 'desc' },
       take: 60,
@@ -73,8 +73,22 @@ export async function GET() {
     }
 
     const portalErrors = recentErrors.filter((log) => isPortalError(log.errorMessage))
-    const isGstPortalIssue = portalErrors.length > 0 && authIssues > 0
     const latestPortalLog = portalErrors[0]
+
+    // Check if the portal has recovered by looking for any successful API call after the latest portal error
+    let isGstPortalIssue = false
+    if (portalErrors.length > 0 && authIssues > 0 && latestPortalLog) {
+      const newerSuccess = await prisma.fetchLog.findFirst({
+        where: {
+          status: 'success',
+          fetchedAt: { gt: latestPortalLog.fetchedAt },
+        },
+      })
+      // If no successful API call occurred after the outage error, it is still down
+      if (!newerSuccess) {
+        isGstPortalIssue = true
+      }
+    }
 
     const gstPortalIssue = {
       isDetected: isGstPortalIssue,
@@ -83,9 +97,9 @@ export async function GET() {
         : isGstPortalIssue
         ? 'PORTAL_UNAVAILABLE'
         : null,
-      errorMessage: latestPortalLog?.errorMessage || null,
-      affectedClientsCount: portalErrors.length,
-      detectedAt: latestPortalLog?.fetchedAt ? latestPortalLog.fetchedAt.toISOString() : null,
+      errorMessage: isGstPortalIssue ? (latestPortalLog?.errorMessage || null) : null,
+      affectedClientsCount: isGstPortalIssue ? portalErrors.length : 0,
+      detectedAt: isGstPortalIssue && latestPortalLog?.fetchedAt ? latestPortalLog.fetchedAt.toISOString() : null,
     }
 
     return NextResponse.json({

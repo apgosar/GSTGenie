@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requestOTP } from '@/lib/whitebooks-api'
 import { DEFAULT_CA_EMAIL, DEFAULT_CA_IP, getStateCodeFromGSTIN } from '@/lib/utils'
@@ -37,6 +37,16 @@ export async function GET() {
         checkedAt: new Date().toISOString(),
       })
     }
+
+    // Record probe success so any stale outage state is cleared
+    await prisma.fetchLog.create({
+      data: {
+        clientId: client.id,
+        status: 'success',
+        logType: 'portal_probe',
+        errorMessage: null,
+      },
+    }).catch(() => {})
 
     return NextResponse.json({
       online: true,
