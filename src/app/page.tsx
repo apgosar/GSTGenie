@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { Users, Bell, Shield, AlertTriangle, RefreshCw, Loader2, Plus, Zap } from 'lucide-react'
+import { Users, Bell, Shield, AlertTriangle, RefreshCw, Loader2, Plus, Zap, ServerCrash } from 'lucide-react'
 import Link from 'next/link'
 import StatsCard from '@/components/StatsCard'
 import NoticeTable from '@/components/NoticeTable'
@@ -25,6 +25,13 @@ interface Stats {
     logType: string
     client: { name: string; gstin: string }
   }[]
+  gstPortalIssue?: {
+    isDetected: boolean
+    errorCode: string | null
+    errorMessage: string | null
+    affectedClientsCount: number
+    detectedAt: string | null
+  }
 }
 
 interface Notice {
@@ -50,6 +57,26 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
   const [showBulkAuth, setShowBulkAuth] = useState(false)
+  const [checkingPortal, setCheckingPortal] = useState(false)
+  const [portalStatusResult, setPortalStatusResult] = useState<{ online: boolean; message: string; errorCode?: string } | null>(null)
+
+  async function checkPortalStatus() {
+    setCheckingPortal(true)
+    try {
+      const res = await fetch('/api/auth/portal-status')
+      const data = await res.json()
+      setPortalStatusResult(data)
+      if (data.online) {
+        toast.success('GST Portal is online! You can now authenticate.')
+      } else {
+        toast.error(`GST Portal is down: ${data.message}`)
+      }
+    } catch {
+      toast.error('Failed to probe GST Portal')
+    } finally {
+      setCheckingPortal(false)
+    }
+  }
 
   const loadData = useCallback(async () => {
     try {
@@ -158,8 +185,124 @@ export default function Dashboard() {
       {/* Scheduled Automation Countdown Timer */}
       <ScheduledTaskCountdown />
 
-      {/* Auth issues banner */}
-      {stats && stats.authIssues > 0 && (
+      {/* GST Portal Outage Banner */}
+      {stats?.gstPortalIssue?.isDetected ? (
+        <div
+          style={{
+            background: 'rgb(254, 243, 199)',
+            border: '1.5px solid rgb(245, 158, 11)',
+            borderRadius: '0.75rem',
+            padding: '1.25rem 1.5rem',
+            marginBottom: '1.5rem',
+            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem' }}>
+              <div
+                style={{
+                  background: 'rgb(251, 191, 36)',
+                  color: 'rgb(120, 53, 15)',
+                  padding: '0.5rem',
+                  borderRadius: '0.5rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: '0.15rem',
+                }}
+              >
+                <ServerCrash size={24} />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '1.05rem', fontWeight: 700, color: 'rgb(146, 64, 14)' }}>
+                    Government GST Portal / API Outage Detected
+                  </span>
+                  <span
+                    style={{
+                      background: 'rgb(245, 158, 11)',
+                      color: 'white',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '0.2rem 0.5rem',
+                      borderRadius: '9999px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.03em',
+                    }}
+                  >
+                    {stats.gstPortalIssue.errorCode || 'PORTAL_DOWN'}
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.875rem', color: 'rgb(180, 83, 9)', margin: '0.35rem 0 0.5rem', maxWidth: '750px', lineHeight: 1.5 }}>
+                  The government GST Portal API returned <code style={{ background: 'rgba(255,255,255,0.7)', padding: '0.15rem 0.35rem', borderRadius: '0.25rem', fontWeight: 600 }}>{stats.gstPortalIssue.errorMessage}</code>.
+                  Because the official GST servers were temporarily unavailable during the scheduled refresh cycle, client sessions could not be extended and have expired. <em>This is an official government GSTN server outage, not a client credential error.</em>
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', fontSize: '0.8rem', color: 'rgb(146, 64, 14)', flexWrap: 'wrap' }}>
+                  <span>👥 <strong>{stats.gstPortalIssue.affectedClientsCount}</strong> clients affected</span>
+                  {stats.gstPortalIssue.detectedAt && (
+                    <span>🕒 Outage detected: <strong>{formatDistanceToNow(new Date(stats.gstPortalIssue.detectedAt), { addSuffix: true })}</strong></span>
+                  )}
+                  <span>🔄 <strong>Auto-Recovery:</strong> System will automatically initiate authentication at next scheduled refresh</span>
+                </div>
+
+                {portalStatusResult && (
+                  <div
+                    style={{
+                      marginTop: '0.75rem',
+                      padding: '0.4rem 0.75rem',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.8rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      background: portalStatusResult.online ? 'rgb(220, 252, 231)' : 'rgb(254, 226, 226)',
+                      color: portalStatusResult.online ? 'rgb(21, 128, 61)' : 'rgb(185, 28, 28)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {portalStatusResult.online ? '🟢 GST Portal is currently online & operational' : `🔴 GST Portal is still down: ${portalStatusResult.message}`}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexShrink: 0, marginTop: '0.25rem' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={checkPortalStatus}
+                disabled={checkingPortal}
+                style={{
+                  background: 'white',
+                  borderColor: 'rgb(217, 119, 6)',
+                  color: 'rgb(180, 83, 9)',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                {checkingPortal ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                {checkingPortal ? 'Testing...' : 'Check Live Portal Status'}
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowBulkAuth(true)}
+                style={{
+                  background: 'rgb(217, 119, 6)',
+                  borderColor: 'rgb(180, 83, 9)',
+                  color: 'white',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                <Zap size={15} /> 1-Click Authenticate All
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : stats && stats.authIssues > 0 ? (
         <div
           style={{
             background: 'rgb(254, 226, 226)',
@@ -189,7 +332,7 @@ export default function Dashboard() {
             <Zap size={15} /> 1-Click Authenticate All
           </button>
         </div>
-      )}
+      ) : null}
 
       {/* Stats cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
