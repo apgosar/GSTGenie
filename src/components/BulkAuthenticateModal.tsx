@@ -87,60 +87,57 @@ export default function BulkAuthenticateModal({
     return () => clearInterval(timer)
   }, [phase, failedList.length])
 
-  // Scanning Loop (every 3.5 seconds during listening phase)
+  // Scanning Loop (runs in parallel during BOTH triggering and listening phases)
+  // Ends 180s after the last OTP is triggered (when listening phase timer expires)
   useEffect(() => {
-    if (phase !== 'listening') return
+    if (phase !== 'triggering' && phase !== 'listening') return
     isCancelledRef.current = false
 
     async function runScanLoop() {
-      while (!isCancelledRef.current && phase === 'listening') {
+      while (!isCancelledRef.current && (phase === 'triggering' || phase === 'listening')) {
         const currentPending = pendingRef.current
-        if (currentPending.length === 0) {
-          // All triggered clients have been authenticated!
+
+        if (currentPending.length > 0) {
+          try {
+            const res = await fetch('/api/auth/bulk-authenticate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'scan',
+                pendingClients: currentPending,
+              }),
+            })
+
+            const data = await res.json()
+
+            if (isCancelledRef.current) break
+
+            if (res.ok && data.success) {
+              const newlyAuth: BulkAuthenticatedClient[] = data.newlyAuthenticated || []
+
+              if (newlyAuth.length > 0) {
+                setAuthenticatedList((prev) => [...prev, ...newlyAuth])
+                // Cleanly remove newly authenticated clients without clobbering concurrent batch additions
+                setPendingList((prev) =>
+                  prev.filter((p) => !newlyAuth.some((a) => a.clientId === p.clientId))
+                )
+                toast.success(`✨ Authenticated ${newlyAuth.length} client(s): ${newlyAuth.map((a) => a.clientName).join(', ')}`)
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new Event('stats-updated'))
+                }
+                onSuccess()
+              }
+            }
+          } catch {
+            // Ignore transient network errors
+          }
+        }
+
+        // If in listening phase (all OTPs triggered) and zero pending remain: all done!
+        if (phase === 'listening' && pendingRef.current.length === 0) {
           setPhase('finished')
           setActiveTab('authenticated')
           break
-        }
-
-        try {
-          const res = await fetch('/api/auth/bulk-authenticate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'scan',
-              pendingClients: currentPending,
-            }),
-          })
-
-          const data = await res.json()
-
-          if (isCancelledRef.current) break
-
-          if (res.ok && data.success) {
-            const newlyAuth: BulkAuthenticatedClient[] = data.newlyAuthenticated || []
-
-            if (newlyAuth.length > 0) {
-              setAuthenticatedList((prev) => [...prev, ...newlyAuth])
-              // Cleanly filter out authenticated clients without clobbering pending state
-              setPendingList((prev) =>
-                prev.filter((p) => !newlyAuth.some((a) => a.clientId === p.clientId))
-              )
-              toast.success(`✨ Authenticated ${newlyAuth.length} client(s): ${newlyAuth.map((a) => a.clientName).join(', ')}`)
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new Event('stats-updated'))
-              }
-              onSuccess()
-            }
-
-            const remainingCount = currentPending.length - newlyAuth.length
-            if (remainingCount <= 0) {
-              setPhase('finished')
-              setActiveTab('authenticated')
-              break
-            }
-          }
-        } catch {
-          // Ignore transient errors
         }
 
         if (isCancelledRef.current) break
@@ -459,7 +456,7 @@ export default function BulkAuthenticateModal({
 
                 {phase === 'triggering' ? (
                   <span style={{ fontSize: '0.75rem', color: 'rgb(109, 40, 217)', fontWeight: 500 }}>
-                    180s Gmail timer starts after dispatch
+                    ⚡ Live Gmail scan active in parallel • 180s timer starts after dispatch
                   </span>
                 ) : phase === 'listening' ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 600, color: 'rgb(109, 40, 217)' }}>
