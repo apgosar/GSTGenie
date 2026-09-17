@@ -569,7 +569,7 @@ export default function BulkAuthenticateModal({
             </div>
 
             {/* Tab navigation */}
-            <div style={{ display: 'flex', borderBottom: '1px solid rgb(226, 232, 240)', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', borderBottom: '1px solid rgb(226, 232, 240)', marginBottom: '0.75rem', overflowX: 'auto', WebkitOverflowScrolling: 'touch', whiteSpace: 'nowrap' }}>
               <button
                 type="button"
                 onClick={() => setActiveTab('pending')}

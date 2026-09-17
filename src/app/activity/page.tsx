@@ -123,9 +123,9 @@ export default function ActivityPage() {
   }
 
   return (
-    <div style={{ padding: '2rem' }}>
+    <div className="page-container">
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Full Activity & API Log</h1>
           <p style={{ color: 'rgb(100, 116, 139)', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
@@ -139,7 +139,7 @@ export default function ActivityPage() {
 
       {/* Stats Summary Bar */}
       {stats && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '0.5rem', marginBottom: '1.25rem' }}>
           <div style={{ background: 'white', border: '1px solid rgb(226, 232, 240)', borderRadius: '0.5rem', padding: '0.75rem', textAlign: 'center' }}>
             <div style={{ fontSize: '0.75rem', color: 'rgb(100, 116, 139)' }}>Total Requests</div>
             <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'rgb(15, 23, 42)' }}>{stats.total}</div>
@@ -239,7 +239,8 @@ export default function ActivityPage() {
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table style={{ margin: 0, width: '100%' }}>
+          <div className="table-responsive">
+            <table style={{ margin: 0, width: '100%' }}>
             <thead>
               <tr>
                 <th style={{ minWidth: 170 }}>Timestamp</th>
@@ -331,6 +332,7 @@ export default function ActivityPage() {
               })}
             </tbody>
           </table>
+          </div>
 
           {/* Pagination bar */}
           {totalPages > 1 && (

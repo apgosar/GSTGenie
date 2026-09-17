@@ -126,7 +126,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '64rem', margin: '0 auto' }}>
+    <div className="page-container" style={{ maxWidth: '64rem', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>

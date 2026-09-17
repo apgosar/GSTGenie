@@ -186,7 +186,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const latestFetchLogWithRaw = client.fetchLogs.find((l) => l.rawResponse)
 
   return (
-    <div style={{ padding: '2rem' }}>
+    <div className="page-container">
       {/* Back button */}
       <Link href="/clients" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', color: 'rgb(100, 116, 139)', textDecoration: 'none', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
         <ArrowLeft size={16} /> Back to Clients

@@ -301,16 +301,16 @@ export default function ClientsPage() {
   const totalNoticesCount = clients.reduce((acc, c) => acc + (c.totalNotices || 0), 0)
 
   return (
-    <div style={{ padding: '2rem' }}>
+    <div className="page-container">
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Clients Directory</h1>
           <p style={{ color: 'rgb(100, 116, 139)', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
             {clients.length} registered client{clients.length !== 1 ? 's' : ''} · {authenticatedCount} authenticated · {totalNoticesCount} total notices
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
             className="btn btn-secondary"
             onClick={() => setShowBulkAuthModal(true)}
@@ -333,9 +333,9 @@ export default function ClientsPage() {
       </div>
 
       {/* Filter Tabs & Search Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', gap: '1rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', gap: '0.75rem', flexWrap: 'wrap' }}>
         {/* Search */}
-        <div style={{ position: 'relative', minWidth: 320, flex: 1, maxWidth: 450 }}>
+        <div style={{ position: 'relative', minWidth: 220, flex: 1, maxWidth: 450 }}>
           <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'rgb(148, 163, 184)' }} />
           <input
             type="text"
@@ -347,7 +347,7 @@ export default function ClientsPage() {
         </div>
 
         {/* Filter Pills */}
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', overflowX: 'auto', paddingBottom: '0.25rem' }}>
           <button
             className={`btn ${statusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
@@ -406,7 +406,8 @@ export default function ClientsPage() {
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table style={{ margin: 0, width: '100%' }}>
+          <div className="table-responsive">
+            <table style={{ margin: 0, width: '100%' }}>
             <thead>
               <tr>
                 <th style={{ minWidth: 200 }}>Client / Business Name</th>
@@ -549,6 +550,7 @@ export default function ClientsPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

@@ -248,3 +248,196 @@ label {
 .badge-warning { background: rgb(254, 249, 195); color: rgb(161, 98, 7); }
 .badge-pending { background: rgb(241, 245, 249); color: rgb(100, 116, 139); }
 .badge-info { background: rgb(219, 234, 254); color: rgb(37, 99, 235); }
+
+/* ==========================================================================
+   Mobile-Friendly & Responsive Layout System
+   ========================================================================== */
+
+.content-wrapper {
+  flex: 1;
+  margin-left: 240px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  width: calc(100% - 240px);
+  transition: margin-left 0.2s ease, width 0.2s ease;
+}
+
+.page-container {
+  padding: 2rem;
+  max-width: 100%;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Touch-friendly accessibility */
+button,
+a,
+input,
+select {
+  touch-action: manipulation;
+}
+
+/* Mobile top navbar */
+.mobile-top-bar {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background-color: rgb(15, 23, 42);
+  color: white;
+  z-index: 45;
+  padding: 0 1rem;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Mobile bottom nav */
+.mobile-bottom-bar {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 62px;
+  background-color: white;
+  border-top: 1px solid rgb(226, 232, 240);
+  z-index: 45;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.mobile-bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  color: rgb(100, 116, 139);
+  text-decoration: none;
+  font-size: 0.68rem;
+  font-weight: 500;
+  position: relative;
+  height: 100%;
+  transition: color 0.15s ease;
+}
+
+.mobile-bottom-nav-item.active {
+  color: rgb(37, 99, 235);
+  font-weight: 600;
+}
+
+/* Mobile slide drawer overlay */
+.mobile-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+  z-index: 49;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.mobile-drawer-content {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 280px;
+  max-width: 82vw;
+  background-color: rgb(15, 23, 42);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 1rem;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+  animation: slideDrawer 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideDrawer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+/* ==========================================================================
+   Media Queries for Tablets & Phones (< 768px)
+   ========================================================================== */
+@media (max-width: 768px) {
+  .desktop-sidebar {
+    display: none !important;
+  }
+
+  .mobile-top-bar {
+    display: flex !important;
+  }
+
+  .mobile-bottom-bar {
+    display: flex !important;
+  }
+
+  .content-wrapper {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding-top: 56px !important;
+    padding-bottom: 74px !important;
+  }
+
+  .page-container {
+    padding: 1rem 0.75rem 2rem 0.75rem !important;
+  }
+
+  /* Modals on mobile */
+  .modal-overlay {
+    padding: 0.5rem !important;
+    align-items: flex-end !important;
+  }
+
+  .modal-content {
+    padding: 1.25rem 1rem !important;
+    max-height: 92vh !important;
+    border-radius: 1.25rem 1.25rem 0.75rem 0.75rem !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  /* Tables */
+  th, td {
+    padding: 0.625rem 0.75rem !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* Cards */
+  .card {
+    padding: 1rem !important;
+    border-radius: 0.625rem !important;
+  }
+
+  /* Ensure inputs do not zoom iOS viewport */
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="password"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Buttons on mobile */
+  .btn {
+    min-height: 38px;
+    padding: 0.45rem 0.85rem;
+  }
+}
