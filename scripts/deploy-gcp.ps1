@@ -1,7 +1,8 @@
 # ==============================================================================
-#  GST Genie: GCP Cloud Run Deployment Automation
+#  GST Genie: GCP Cloud Run Deployment Automation (Firestore Native Mode)
 #  Project ID : gstgenie-506815
 #  Region     : asia-south1 (Mumbai)
+#  Database   : Google Cloud Firestore (Always Free Tier: ₹0.00/mo)
 # ==============================================================================
 
 param(
@@ -16,11 +17,12 @@ $ErrorActionPreference = "Continue"
 
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "  GST Genie: Deploying to GCP Cloud Run" -ForegroundColor Cyan
+Write-Host "  GST Genie: Deploying to GCP Cloud Run (Firestore)" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host "  GCP Project : $ProjectId" -ForegroundColor Green
 Write-Host "  GCP Region  : $Region (Mumbai)" -ForegroundColor Green
 Write-Host "  Service     : $ServiceName" -ForegroundColor Green
+Write-Host "  Database    : Google Cloud Firestore (Native Mode)" -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -63,7 +65,6 @@ if (Test-Path $envFile) {
 
 # Strip any whitespace from app password
 $gmailAppPassword = $gmailAppPassword.Replace(" ", "")
-$bucketName = "$ProjectId-db".ToLower()
 
 # 4. Enable Required GCP APIs
 Write-Host ""
@@ -71,44 +72,28 @@ Write-Host "2. Enabling required Google Cloud APIs..." -ForegroundColor Yellow
 gcloud services enable run.googleapis.com `
   cloudbuild.googleapis.com `
   cloudscheduler.googleapis.com `
-  storage.googleapis.com `
+  firestore.googleapis.com `
   --project $ProjectId
 
-# 5. Create Cloud Storage Bucket for SQLite Database Persistence
+# 5. Ensure Service Account has Firestore permissions
 Write-Host ""
-Write-Host "3. Ensuring persistent GCS storage bucket exists (gs://$bucketName)..." -ForegroundColor Yellow
-
-$null = gcloud storage buckets describe "gs://$bucketName" --project $ProjectId 2>&1
-if ($LASTEXITCODE -ne 0) {
-  Write-Host "Creating bucket gs://$bucketName in $Region..." -ForegroundColor Yellow
-  gcloud storage buckets create "gs://$bucketName" --project=$ProjectId --location=$Region --uniform-bucket-level-access
-  if ($LASTEXITCODE -eq 0) {
-    Write-Host "[OK] Bucket created successfully." -ForegroundColor Green
-  } else {
-    Write-Warning "Could not create bucket via gcloud storage. Trying with location=$Region..."
-    gcloud storage buckets create "gs://$bucketName" --project=$ProjectId --location=$Region
-  }
-} else {
-  Write-Host "[OK] Bucket already exists." -ForegroundColor Green
+Write-Host "3. Ensuring Cloud Run Service Account has Firestore access..." -ForegroundColor Yellow
+$projectNumber = (gcloud projects describe $ProjectId --format="value(projectNumber)" 2>$null).Trim()
+if ($projectNumber) {
+  $computeSa = "$projectNumber-compute@developer.gserviceaccount.com"
+  gcloud projects add-iam-policy-binding $ProjectId `
+    --member="serviceAccount:$computeSa" `
+    --role="roles/datastore.user" `
+    --condition=None | Out-Null
+  Write-Host "[OK] Granted roles/datastore.user to $computeSa" -ForegroundColor Green
 }
 
-# 6. Seed/Migrate existing local database to GCS if needed
-$localDb = Join-Path $PSScriptRoot "..\dev.db"
-if (Test-Path $localDb) {
-  $null = gcloud storage ls "gs://$bucketName/dev.db" 2>&1
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "Uploading local dev.db to GCS bucket for initial data persistence..." -ForegroundColor Yellow
-    gcloud storage cp $localDb "gs://$bucketName/dev.db"
-    Write-Host "[OK] Uploaded local database to gs://$bucketName/dev.db" -ForegroundColor Green
-  }
-}
-
-# 7. Generate temporary env-vars.yaml for Cloud Run deployment
+# 6. Generate temporary env-vars.yaml for Cloud Run deployment
 $appDir = Resolve-Path (Join-Path $PSScriptRoot "..")
 $envYamlPath = Join-Path $appDir "env-vars.yaml"
 
 $yamlLines = @(
-  'DATABASE_URL: "file:/data/dev.db"',
+  "GCP_PROJECT: `"$ProjectId`"",
   "WHITEBOOKS_BASE_URL: `"$whitebooksBaseUrl`"",
   "WHITEBOOKS_CLIENT_ID: `"$whitebooksClientId`"",
   "WHITEBOOKS_CLIENT_SECRET: `"$whitebooksClientSecret`"",
@@ -119,7 +104,7 @@ $yamlLines = @(
 
 $yamlLines | Set-Content -Path $envYamlPath -Encoding UTF8
 
-# 8. Build and Deploy to Cloud Run
+# 7. Build and Deploy to Cloud Run
 Write-Host ""
 Write-Host "4. Building container with Cloud Build and deploying to Cloud Run..." -ForegroundColor Yellow
 Push-Location $appDir
@@ -135,8 +120,7 @@ try {
     --cpu 1 `
     --concurrency 80 `
     --max-instances 1 `
-    --add-volume "name=db-volume,type=cloud-storage,bucket=$bucketName" `
-    --add-volume-mount "volume=db-volume,mount-path=/data" `
+    --clear-volumes `
     --env-vars-file "env-vars.yaml" `
     --quiet
   $deployExitCode = $LASTEXITCODE
@@ -157,7 +141,7 @@ if ($deployExitCode -ne 0) {
   exit 1
 }
 
-# 9. Retrieve Service URL
+# 8. Retrieve Service URL
 $serviceUrl = (gcloud run services describe $ServiceName --project $ProjectId --region $Region --format "value(status.url)" 2>$null)
 if ($serviceUrl) {
   $serviceUrl = $serviceUrl.Trim()
@@ -165,7 +149,7 @@ if ($serviceUrl) {
   Write-Host "[OK] Service deployed successfully!" -ForegroundColor Green
   Write-Host "Live Application URL: $serviceUrl" -ForegroundColor Cyan
 
-  # 10. Setup Cloud Scheduler Jobs
+  # 9. Setup Cloud Scheduler Jobs
   Write-Host ""
   Write-Host "5. Configuring Cloud Scheduler automated cron jobs..." -ForegroundColor Yellow
 
@@ -207,16 +191,17 @@ if ($serviceUrl) {
 
   Write-Host "[OK] Scheduled: Notice Fetch & Report weekly on Mondays at 10:00 AM IST" -ForegroundColor Green
 
-  # 11. Summary
+  # 10. Summary
   Write-Host ""
   Write-Host "========================================================" -ForegroundColor Green
   Write-Host "  Deployment Complete and Automated!" -ForegroundColor Green
   Write-Host "========================================================" -ForegroundColor Green
   Write-Host "Live App URL   : $serviceUrl" -ForegroundColor Cyan
-  Write-Host "GCS Storage    : gs://$bucketName" -ForegroundColor Cyan
+  Write-Host "Database       : Google Cloud Firestore (Native Mode, asia-south1)" -ForegroundColor Cyan
   Write-Host "Region         : $Region (Mumbai)" -ForegroundColor Cyan
   Write-Host "Cron Secret    : $CronSecret" -ForegroundColor Cyan
-  Write-Host "Monthly Cost   : Rs. 0.00 / month (Always Free tier)" -ForegroundColor Yellow
+  Write-Host "Monthly Cost   : Rs. 0.00 / month (Firestore Always Free Tier: 50k reads/day, 20k writes/day)" -ForegroundColor Yellow
+  Write-Host "Volume Mounts  : None (0 GCS micro-IO fees)" -ForegroundColor Yellow
   Write-Host "========================================================" -ForegroundColor Green
   Write-Host ""
 }

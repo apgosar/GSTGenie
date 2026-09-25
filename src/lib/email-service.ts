@@ -44,25 +44,6 @@ function getMailerTransport() {
   })
 }
 
-async function ensureSystemSettingTable() {
-  try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "SystemSetting" (
-        "id" TEXT NOT NULL PRIMARY KEY,
-        "key" TEXT NOT NULL,
-        "value" TEXT NOT NULL,
-        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `)
-    await prisma.$executeRawUnsafe(`
-      CREATE UNIQUE INDEX IF NOT EXISTS "SystemSetting_key_key" ON "SystemSetting"("key");
-    `)
-  } catch (err) {
-    console.warn('[EmailService] ensureSystemSettingTable notice:', err)
-  }
-}
-
 export async function getNotificationEmails(): Promise<string[]> {
   try {
     const setting = await prisma.systemSetting.findUnique({
@@ -76,8 +57,7 @@ export async function getNotificationEmails(): Promise<string[]> {
       }
     }
   } catch (err) {
-    console.warn('Error reading notification emails from DB, ensuring table exists:', err)
-    await ensureSystemSettingTable()
+    console.warn('Error reading notification emails from Firestore:', err)
   }
 
   // Fallback default
@@ -102,18 +82,8 @@ export async function setNotificationEmails(emails: string[]): Promise<string[]>
       },
     })
   } catch (err) {
-    console.warn('[EmailService] upsert failed, ensuring table exists and retrying...', err)
-    await ensureSystemSettingTable()
-    await prisma.systemSetting.upsert({
-      where: { key: 'notification_emails' },
-      create: {
-        key: 'notification_emails',
-        value: JSON.stringify(cleanEmails),
-      },
-      update: {
-        value: JSON.stringify(cleanEmails),
-      },
-    })
+    console.error('[EmailService] Failed to update notification emails in Firestore:', err)
+    throw err
   }
 
   return cleanEmails

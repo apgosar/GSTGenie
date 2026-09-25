@@ -19,7 +19,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma Client
+# Generate Prisma Client (for backwards compatibility)
 RUN npx prisma generate
 
 # Build Next.js standalone application
@@ -39,14 +39,10 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=8080
 ENV HOSTNAME="0.0.0.0"
-ENV DATABASE_URL="file:/data/dev.db"
 
 # Create nextjs system user & group
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
-
-# Create /data directory for GCS volume mount
-RUN mkdir -p /data && chown -R nextjs:nodejs /data
 
 # Copy public static files
 COPY --from=builder /app/public ./public
@@ -54,9 +50,6 @@ COPY --from=builder /app/public ./public
 # Copy standalone build
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
 
 USER nextjs
 
