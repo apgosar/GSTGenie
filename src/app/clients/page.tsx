@@ -1,10 +1,12 @@
 'use client'
 import React, { useEffect, useState, useCallback } from 'react'
-import { Plus, Search, Loader2, X, Users, FileSpreadsheet, Zap, KeyRound, RefreshCw, Eye, AlertTriangle, CheckCircle2, Clock, ShieldAlert } from 'lucide-react'
+import { Plus, Search, Loader2, X, Users, FileSpreadsheet, Zap, KeyRound, RefreshCw, Eye, AlertTriangle, CheckCircle2, Clock, ShieldAlert, Pencil, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import OTPModal from '@/components/OTPModal'
 import ImportClientsModal from '@/components/ImportClientsModal'
 import BulkAuthenticateModal from '@/components/BulkAuthenticateModal'
+import EditClientModal from '@/components/EditClientModal'
+import DeleteClientModal from '@/components/DeleteClientModal'
 import { toast } from 'sonner'
 import { INDIAN_STATES, validateGSTIN, getStateCodeFromGSTIN, getStateNameByCode, DEFAULT_CA_EMAIL } from '@/lib/utils'
 import { format, differenceInMinutes, formatDistanceToNow } from 'date-fns'
@@ -57,6 +59,8 @@ export default function ClientsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [fetchingClientId, setFetchingClientId] = useState<string | null>(null)
   const [refreshingClientId, setRefreshingClientId] = useState<string | null>(null)
+  const [editingClient, setEditingClient] = useState<Client | null>(null)
+  const [deletingClient, setDeletingClient] = useState<Client | null>(null)
 
   const [otpModal, setOtpModal] = useState<{
     clientId: string
@@ -415,7 +419,7 @@ export default function ClientsPage() {
                 <th style={{ minWidth: 150 }}>Auth Status</th>
                 <th style={{ minWidth: 180 }}>Last Notice Fetched</th>
                 <th style={{ minWidth: 120 }}>Notices</th>
-                <th style={{ minWidth: 180, textAlign: 'right' }}>Actions</th>
+                <th style={{ minWidth: 240, textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -500,12 +504,12 @@ export default function ClientsPage() {
 
                     {/* Actions */}
                     <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem' }}>
                         {isAuth ? (
                           <>
                             <button
                               className="btn btn-primary"
-                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                              style={{ padding: '0.3rem 0.55rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
                               onClick={() => handleFetchNotices(client.id)}
                               disabled={isFetching}
                               title="Fetch recent notices from GST portal"
@@ -516,7 +520,7 @@ export default function ClientsPage() {
 
                             <button
                               className="btn btn-secondary"
-                              style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
+                              style={{ padding: '0.3rem 0.45rem', fontSize: '0.75rem' }}
                               onClick={() => handleRefreshToken(client.id)}
                               disabled={isRefreshing}
                               title="Refresh 6-hour session token"
@@ -527,7 +531,7 @@ export default function ClientsPage() {
                         ) : (
                           <button
                             className="btn btn-secondary"
-                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', borderColor: 'rgb(253, 230, 138)', background: 'rgb(254, 252, 232)', color: 'rgb(180, 83, 9)' }}
+                            style={{ padding: '0.3rem 0.55rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', borderColor: 'rgb(253, 230, 138)', background: 'rgb(254, 252, 232)', color: 'rgb(180, 83, 9)' }}
                             onClick={() => handleRequestOTP(client)}
                             title="Request OTP to activate 6-hour session"
                           >
@@ -538,11 +542,36 @@ export default function ClientsPage() {
                         <Link
                           href={`/clients/${client.id}`}
                           className="btn btn-secondary"
-                          style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
+                          style={{ padding: '0.3rem 0.45rem', fontSize: '0.75rem' }}
                           title="View client details and notices"
                         >
                           <Eye size={12} />
                         </Link>
+
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ padding: '0.3rem 0.45rem', fontSize: '0.75rem' }}
+                          onClick={() => setEditingClient(client)}
+                          title="Edit client details"
+                        >
+                          <Pencil size={12} />
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{
+                            padding: '0.3rem 0.45rem',
+                            fontSize: '0.75rem',
+                            color: 'rgb(220, 38, 38)',
+                            borderColor: 'rgb(254, 202, 202)',
+                          }}
+                          onClick={() => setDeletingClient(client)}
+                          title="Delete client"
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -695,6 +724,35 @@ export default function ClientsPage() {
             loadClients()
           }}
           onClose={() => setOtpModal(null)}
+        />
+      )}
+
+      {/* Edit Client Modal */}
+      {editingClient && (
+        <EditClientModal
+          client={editingClient}
+          onClose={() => setEditingClient(null)}
+          onSuccess={() => {
+            setEditingClient(null)
+            loadClients()
+          }}
+        />
+      )}
+
+      {/* Delete Client Modal */}
+      {deletingClient && (
+        <DeleteClientModal
+          client={{
+            id: deletingClient.id,
+            name: deletingClient.name,
+            gstin: deletingClient.gstin,
+            totalNotices: deletingClient.totalNotices,
+          }}
+          onClose={() => setDeletingClient(null)}
+          onSuccess={() => {
+            setDeletingClient(null)
+            loadClients()
+          }}
         />
       )}
     </div>

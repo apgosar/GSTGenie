@@ -1,11 +1,14 @@
 'use client'
 import { useEffect, useState, useCallback, use } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Bell, RefreshCw, Shield, AlertTriangle, Loader2, Clock, CheckCircle, Bug, Eye } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Bell, RefreshCw, Shield, AlertTriangle, Loader2, Clock, CheckCircle, Bug, Eye, Pencil, Trash2 } from 'lucide-react'
 import StatusBadge from '@/components/StatusBadge'
 import NoticeTable from '@/components/NoticeTable'
 import OTPModal from '@/components/OTPModal'
 import DebugNoticeModal from '@/components/DebugNoticeModal'
+import EditClientModal from '@/components/EditClientModal'
+import DeleteClientModal from '@/components/DeleteClientModal'
 import { toast } from 'sonner'
 import { formatDistanceToNow, format, isAfter } from 'date-fns'
 import { getStateNameByCode } from '@/lib/utils'
@@ -66,6 +69,7 @@ interface ClientDetail {
 
 export default function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const router = useRouter()
   const [client, setClient] = useState<ClientDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
@@ -74,6 +78,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [otpModal, setOtpModal] = useState<{ txn: string; sessionId?: string } | null>(null)
   const [debugModal, setDebugModal] = useState(false)
   const [selectedRawResponse, setSelectedRawResponse] = useState<string | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
 
   const loadClient = useCallback(async () => {
     try {
@@ -237,6 +243,21 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             {requestingOTP ? <Loader2 size={16} className="animate-spin" /> : <Shield size={16} />}
             {requestingOTP ? 'Sending OTP...' : 'Re-authenticate'}
           </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowEditModal(true)}
+            title="Edit client details"
+          >
+            <Pencil size={16} /> Edit Client
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowDeleteModal(true)}
+            title="Delete client"
+            style={{ color: 'rgb(220, 38, 38)', borderColor: 'rgb(254, 202, 202)', background: 'rgb(254, 242, 242)' }}
+          >
+            <Trash2 size={16} /> Delete Client
+          </button>
         </div>
       </div>
 
@@ -383,6 +404,35 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             setSelectedRawResponse(null)
           }}
           onRefresh={loadClient}
+        />
+      )}
+
+      {/* Edit Client Modal */}
+      {showEditModal && (
+        <EditClientModal
+          client={client}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={() => {
+            setShowEditModal(false)
+            loadClient()
+          }}
+        />
+      )}
+
+      {/* Delete Client Modal */}
+      {showDeleteModal && (
+        <DeleteClientModal
+          client={{
+            id: client.id,
+            name: client.name,
+            gstin: client.gstin,
+            totalNotices: client.notices?.length,
+          }}
+          onClose={() => setShowDeleteModal(false)}
+          onSuccess={() => {
+            setShowDeleteModal(false)
+            router.push('/clients')
+          }}
         />
       )}
     </div>
