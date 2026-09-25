@@ -120,7 +120,6 @@ try {
     --cpu 1 `
     --concurrency 80 `
     --max-instances 1 `
-    --clear-volumes `
     --env-vars-file "env-vars.yaml" `
     --quiet
   $deployExitCode = $LASTEXITCODE
