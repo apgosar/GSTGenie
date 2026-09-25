@@ -81,8 +81,11 @@ export interface NoticeListResult {
 function buildHeaders(auth: AuthHeaders): Record<string, string> {
   const headers: Record<string, string> = {
     'gst_username': auth.gst_username,
+    'gst-username': auth.gst_username,
     'state_cd': auth.state_cd,
+    'state-cd': auth.state_cd,
     'ip_address': auth.ip_address || DEFAULT_CA_IP,
+    'ip-usr': auth.ip_address || DEFAULT_CA_IP,
     'client_id': CLIENT_ID,
     'client_secret': CLIENT_SECRET,
   }
@@ -96,10 +99,21 @@ function extractErrorMessage(data: unknown, rawText: string): string {
 
   if (obj.error && typeof obj.error === 'object') {
     const err = obj.error as Record<string, unknown>
-    const code = err.errorCode || err.error_cd || err.code || ''
-    const msg = err.errorMessage || err.error_desc || err.message || err.msg || ''
-    if (code && msg) return `[${code}] ${msg}`
-    if (msg) return String(msg)
+    const code = String(err.errorCode || err.error_cd || err.code || '').trim()
+    const msg = String(err.errorMessage || err.error_desc || err.message || err.msg || '').trim()
+    const statusDesc = obj.status_desc ? String(obj.status_desc).trim() : ''
+
+    // Specifically handle AUTH4041 with status_desc context
+    if (code === 'AUTH4041') {
+      const extra = statusDesc ? ` (${statusDesc})` : ''
+      return `[AUTH4041] Invalid Parameter state-cd in request header${extra} — GST Portal could not find this GST Username for this state. Please verify the GST Username on services.gst.gov.in.`
+    }
+
+    if (code && msg) {
+      const extra = statusDesc && !msg.toLowerCase().includes(statusDesc.toLowerCase()) ? ` (${statusDesc})` : ''
+      return `[${code}] ${msg}${extra}`
+    }
+    if (msg) return msg
     if (code) return `Error code: ${code}`
   }
 

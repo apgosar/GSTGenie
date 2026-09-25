@@ -26,8 +26,42 @@ export async function POST(req: NextRequest) {
     )
 
     if (!result.success) {
+      const errorMessage = result.message || 'Failed to send OTP'
+
+      // Mark client status as error so it is highlighted on dashboard
+      await prisma.client.update({
+        where: { id: clientId },
+        data: { status: 'error' },
+      }).catch(() => {})
+
+      // Always record OTP request failure in fetchLog for audit and debugging
+      try {
+        await prisma.fetchLog.create({
+          data: {
+            clientId,
+            status: 'error',
+            logType: 'otp_request',
+            errorMessage,
+            rawResponse: JSON.stringify({
+              request: {
+                endpoint: 'GET /authentication/otprequest',
+                email: DEFAULT_CA_EMAIL,
+                gst_username: client.gstUsername,
+                state_cd: stateCode,
+                ip_address: DEFAULT_CA_IP,
+              },
+              response: result.raw,
+              rawBody: result.rawText,
+              debug: result.debug,
+            }),
+          },
+        })
+      } catch (logErr) {
+        console.error('Failed to log OTP error:', logErr)
+      }
+
       return NextResponse.json(
-        { error: result.message || 'Failed to send OTP', debug: result.debug, raw: result.raw },
+        { error: errorMessage, debug: result.debug, raw: result.raw },
         { status: 400 }
       )
     }
