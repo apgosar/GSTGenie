@@ -362,6 +362,7 @@ export default function Dashboard() {
           value={stats?.totalClients ?? 0}
           icon={<Users size={22} />}
           subtitle="Registered clients"
+          href="/clients"
         />
         <StatsCard
           title="New Notices"
@@ -370,6 +371,7 @@ export default function Dashboard() {
           subtitle="Unread notices"
           highlight={(stats?.newNotices ?? 0) > 0}
           color="rgb(37, 99, 235)"
+          href="/notices?filter=new"
         />
         <StatsCard
           title="Active Sessions"
@@ -377,6 +379,7 @@ export default function Dashboard() {
           icon={<Shield size={22} />}
           subtitle={stats?.expiringSoon ? `${stats.expiringSoon} expiring soon` : 'All healthy'}
           color="rgb(22, 163, 74)"
+          href="/clients?status=authenticated"
         />
         <StatsCard
           title="Auth Issues"
@@ -385,6 +388,7 @@ export default function Dashboard() {
           subtitle="Need re-authentication"
           highlight={(stats?.authIssues ?? 0) > 0}
           color="rgb(220, 38, 38)"
+          href="/clients?status=pending"
         />
       </div>
 

@@ -1,5 +1,7 @@
 'use client'
 import { ReactNode } from 'react'
+import Link from 'next/link'
+import { ArrowUpRight } from 'lucide-react'
 
 interface StatsCardProps {
   title: string
@@ -8,6 +10,8 @@ interface StatsCardProps {
   subtitle?: string
   highlight?: boolean
   color?: string
+  href?: string
+  onClick?: () => void
 }
 
 export default function StatsCard({
@@ -17,20 +21,48 @@ export default function StatsCard({
   subtitle,
   highlight,
   color = 'rgb(37, 99, 235)',
+  href,
+  onClick,
 }: StatsCardProps) {
-  return (
+  const isClickable = Boolean(href || onClick)
+
+  const cardContent = (
     <div
-      className="card"
+      className={`card ${isClickable ? 'card-clickable' : ''}`}
+      onClick={onClick}
+      role={onClick && !href ? 'button' : undefined}
+      tabIndex={onClick && !href ? 0 : undefined}
       style={{
         borderLeft: highlight ? `4px solid ${color}` : undefined,
-        background: highlight ? `rgba(${color === 'rgb(37, 99, 235)' ? '37, 99, 235' : '220, 38, 38'}, 0.04)` : 'white',
+        background: highlight
+          ? `rgba(${color === 'rgb(37, 99, 235)' ? '37, 99, 235' : '220, 38, 38'}, 0.04)`
+          : 'white',
+        position: 'relative',
+        height: '100%',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <p style={{ fontSize: '0.75rem', fontWeight: 500, color: 'rgb(100, 116, 139)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-            {title}
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.5rem' }}>
+            <p
+              style={{
+                fontSize: '0.75rem',
+                fontWeight: 500,
+                color: 'rgb(100, 116, 139)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                margin: 0,
+              }}
+            >
+              {title}
+            </p>
+            {isClickable && (
+              <ArrowUpRight
+                size={13}
+                style={{ color: 'rgb(148, 163, 184)', opacity: 0.8 }}
+              />
+            )}
+          </div>
           <p
             style={{
               fontSize: '2rem',
@@ -43,7 +75,9 @@ export default function StatsCard({
             {value}
           </p>
           {subtitle && (
-            <p style={{ fontSize: '0.75rem', color: 'rgb(100, 116, 139)' }}>{subtitle}</p>
+            <p style={{ fontSize: '0.75rem', color: 'rgb(100, 116, 139)', margin: 0 }}>
+              {subtitle}
+            </p>
           )}
         </div>
         <div
@@ -51,11 +85,20 @@ export default function StatsCard({
             width: 44,
             height: 44,
             borderRadius: '0.625rem',
-            background: `rgba(${color === 'rgb(37, 99, 235)' ? '37, 99, 235' : color === 'rgb(220, 38, 38)' ? '220, 38, 38' : color === 'rgb(22, 163, 74)' ? '22, 163, 74' : '234, 179, 8'}, 0.1)`,
+            background: `rgba(${
+              color === 'rgb(37, 99, 235)'
+                ? '37, 99, 235'
+                : color === 'rgb(220, 38, 38)'
+                ? '220, 38, 38'
+                : color === 'rgb(22, 163, 74)'
+                ? '22, 163, 74'
+                : '234, 179, 8'
+            }, 0.1)`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color,
+            flexShrink: 0,
           }}
         >
           {icon}
@@ -63,4 +106,14 @@ export default function StatsCard({
       </div>
     </div>
   )
+
+  if (href) {
+    return (
+      <Link href={href} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+        {cardContent}
+      </Link>
+    )
+  }
+
+  return cardContent
 }

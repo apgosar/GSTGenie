@@ -1,8 +1,22 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Bell, RefreshCw, Loader2, Filter } from 'lucide-react'
 import NoticeTable from '@/components/NoticeTable'
 import { toast } from 'sonner'
+
+function NoticeFilterSync({ onFilterChange }: { onFilterChange: (filter: 'all' | 'new') => void }) {
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const f = searchParams.get('filter')
+    if (f === 'new') {
+      onFilterChange('new')
+    } else if (f === 'all') {
+      onFilterChange('all')
+    }
+  }, [searchParams, onFilterChange])
+  return null
+}
 
 interface Notice {
   id: string
@@ -46,6 +60,9 @@ export default function NoticesPage() {
 
   return (
     <div className="page-container">
+      <Suspense fallback={null}>
+        <NoticeFilterSync onFilterChange={setFilter} />
+      </Suspense>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>

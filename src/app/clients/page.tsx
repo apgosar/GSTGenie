@@ -1,5 +1,6 @@
 'use client'
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Plus, Search, Loader2, X, Users, FileSpreadsheet, Zap, KeyRound, RefreshCw, Eye, AlertTriangle, CheckCircle2, Clock, ShieldAlert, Pencil, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import OTPModal from '@/components/OTPModal'
@@ -10,6 +11,27 @@ import DeleteClientModal from '@/components/DeleteClientModal'
 import { toast } from 'sonner'
 import { INDIAN_STATES, validateGSTIN, getStateCodeFromGSTIN, getStateNameByCode, DEFAULT_CA_EMAIL } from '@/lib/utils'
 import { format, differenceInMinutes, formatDistanceToNow } from 'date-fns'
+
+function ClientFilterSync({
+  onFilterChange,
+}: {
+  onFilterChange: (filter: 'all' | 'authenticated' | 'pending' | 'new_notices') => void
+}) {
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const status = searchParams.get('status') || searchParams.get('filter')
+    if (status === 'authenticated') {
+      onFilterChange('authenticated')
+    } else if (status === 'pending' || status === 'error' || status === 'issues') {
+      onFilterChange('pending')
+    } else if (status === 'new_notices' || status === 'new') {
+      onFilterChange('new_notices')
+    } else if (status === 'all') {
+      onFilterChange('all')
+    }
+  }, [searchParams, onFilterChange])
+  return null
+}
 
 interface Session {
   id: string
@@ -306,6 +328,10 @@ export default function ClientsPage() {
 
   return (
     <div className="page-container">
+      <Suspense fallback={null}>
+        <ClientFilterSync onFilterChange={setStatusFilter} />
+      </Suspense>
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
