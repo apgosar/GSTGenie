@@ -1,8 +1,25 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 
-export async function GET() {
+// Server-side response cache (30 seconds)
+// Prevents multiple tabs or rapid polls from repeatedly hitting Firestore
+let cachedStats: { data: any; timestamp: number } | null = null
+const STATS_CACHE_TTL_MS = 30 * 1000 // 30 seconds
+
+export function invalidateDashboardStatsCache() {
+  cachedStats = null
+}
+
+export async function GET(req?: NextRequest) {
   try {
+    const url = req?.url ? new URL(req.url) : null
+    const force = url?.searchParams.get('force') === 'true'
+
+    const nowMs = Date.now()
+    if (!force && cachedStats && nowMs - cachedStats.timestamp < STATS_CACHE_TTL_MS) {
+      return NextResponse.json(cachedStats.data)
+    }
+
     const now = new Date()
 
     const [totalClients, totalNotices, newNotices, recentLogs] = await Promise.all([
@@ -56,7 +73,7 @@ export async function GET() {
         fetchedAt: { gte: thirtyMinutesAgo },
       },
       orderBy: { fetchedAt: 'desc' },
-      take: 60,
+      take: 15,
     })
 
     const isPortalError = (msg: string | null) => {
@@ -72,7 +89,7 @@ export async function GET() {
       )
     }
 
-    const portalErrors = recentErrors.filter((log) => isPortalError(log.errorMessage))
+    const portalErrors = recentErrors.filter((log: any) => isPortalError(log.errorMessage))
     const latestPortalLog = portalErrors[0]
 
     // Check if the portal has recovered by looking for any successful API call after the latest portal error
@@ -102,7 +119,7 @@ export async function GET() {
       detectedAt: isGstPortalIssue && latestPortalLog?.fetchedAt ? latestPortalLog.fetchedAt.toISOString() : null,
     }
 
-    return NextResponse.json({
+    const responsePayload = {
       totalClients,
       totalNotices,
       newNotices,
@@ -111,7 +128,10 @@ export async function GET() {
       expiringSoon,
       recentActivity: recentLogs,
       gstPortalIssue,
-    })
+    }
+
+    cachedStats = { data: responsePayload, timestamp: Date.now() }
+    return NextResponse.json(responsePayload)
   } catch (error) {
     console.error('GET /api/dashboard/stats error:', error)
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 })

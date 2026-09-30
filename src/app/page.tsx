@@ -81,6 +81,9 @@ export default function Dashboard() {
   }
 
   const loadData = useCallback(async () => {
+    // If the browser tab is hidden / in background, skip loading
+    if (typeof document !== 'undefined' && document.hidden) return
+
     try {
       const [statsRes, noticesRes] = await Promise.all([
         fetch('/api/dashboard/stats'),

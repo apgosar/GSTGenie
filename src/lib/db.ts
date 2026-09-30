@@ -336,9 +336,9 @@ function applySelect<T>(doc: T, select?: Record<string, boolean>): any {
 
 // In-memory micro-cache for Clients (invalidated on every client write/delete)
 let cachedClients: { data: Client[]; timestamp: number } | null = null
-const CLIENT_CACHE_TTL_MS = 3000 // 3 seconds TTL
+const CLIENT_CACHE_TTL_MS = 60 * 1000 // 60 seconds TTL
 
-function invalidateClientCache() {
+export function invalidateClientCache() {
   cachedClients = null
 }
 
@@ -351,6 +351,28 @@ async function getAllClientsRaw(): Promise<Client[]> {
   const clients = snap.docs.map((d) => normalizeClient(d.data(), d.id))
   cachedClients = { data: clients, timestamp: now }
   return clients
+}
+
+// In-memory micro-cache for Active Sessions (invalidated on any session write/update)
+let cachedActiveSessions: { data: AuthSession[]; timestamp: number } | null = null
+const ACTIVE_SESSIONS_CACHE_TTL_MS = 60 * 1000 // 60 seconds TTL
+
+export function invalidateSessionCache() {
+  cachedActiveSessions = null
+}
+
+async function getActiveSessionsCached(): Promise<AuthSession[]> {
+  const now = Date.now()
+  if (cachedActiveSessions && now - cachedActiveSessions.timestamp < ACTIVE_SESSIONS_CACHE_TTL_MS) {
+    return cachedActiveSessions.data
+  }
+  const snap = await firestore
+    .collection('authSessions')
+    .where('isActive', '==', true)
+    .get()
+  const sessions = snap.docs.map((d) => normalizeSession(d.data(), d.id))
+  cachedActiveSessions = { data: sessions, timestamp: now }
+  return sessions
 }
 
 // ============================================================================
@@ -379,10 +401,9 @@ export const prisma = {
       let noticeCountMap: Map<string, number> | undefined
 
       if (options?.include?.sessions || options?.where?.sessions) {
-        const sessSnap = await firestore.collection('authSessions').get()
+        const activeSessions = await getActiveSessionsCached()
         sessionMap = new Map()
-        sessSnap.docs.forEach((d) => {
-          const s = normalizeSession(d.data(), d.id)
+        activeSessions.forEach((s) => {
           const list = sessionMap!.get(s.clientId) || []
           list.push(s)
           sessionMap!.set(s.clientId, list)
@@ -393,7 +414,7 @@ export const prisma = {
         const logsSnap = await firestore
           .collection('fetchLogs')
           .orderBy('fetchedAt', 'desc')
-          .limit(300)
+          .limit(60)
           .get()
         logMap = new Map()
         logsSnap.docs.forEach((d) => {
@@ -632,8 +653,8 @@ export const prisma = {
 
     async count(options?: { where?: any }): Promise<number> {
       if (!options?.where || Object.keys(options.where).length === 0) {
-        const snap = await firestore.collection('clients').count().get()
-        return snap.data().count
+        const clients = await getAllClientsRaw()
+        return clients.length
       }
       const clients = await this.findMany({ where: options.where })
       return clients.length
@@ -651,6 +672,26 @@ export const prisma = {
       take?: number
       skip?: number
     }): Promise<AuthSession[]> {
+      // If querying active sessions without a specific clientId, use memory cache!
+      if (options?.where?.isActive === true && !options?.where?.clientId) {
+        let sessions = await getActiveSessionsCached()
+        if (options?.where) {
+          sessions = sessions.filter((s) => matchesFilter(s, options.where))
+        }
+        sessions = sortDocs(sessions, options?.orderBy)
+        if (options?.skip) sessions = sessions.slice(options.skip)
+        if (options?.take) sessions = sessions.slice(0, options.take)
+        if (options?.include?.client) {
+          const allClients = await getAllClientsRaw()
+          const clientMap = new Map(allClients.map((c) => [c.id, c]))
+          sessions = sessions.map((s) => ({
+            ...s,
+            client: clientMap.get(s.clientId),
+          }))
+        }
+        return sessions
+      }
+
       let query: FirebaseFirestore.Query = firestore.collection('authSessions')
 
       if (options?.where?.clientId) {
@@ -694,6 +735,7 @@ export const prisma = {
     },
 
     async create(options: { data: any }): Promise<AuthSession> {
+      invalidateSessionCache()
       const now = new Date()
       const colRef = firestore.collection('authSessions')
       const docRef = options.data.id ? colRef.doc(options.data.id) : colRef.doc()
@@ -708,10 +750,29 @@ export const prisma = {
       }
 
       await docRef.set(sessionData)
+
+      // Auto-prune old inactive sessions for this client so they never accumulate
+      if (sessionData.clientId) {
+        firestore
+          .collection('authSessions')
+          .where('clientId', '==', sessionData.clientId)
+          .where('isActive', '==', false)
+          .get()
+          .then((oldSnap) => {
+            if (oldSnap.size > 2) {
+              const b = firestore.batch()
+              oldSnap.docs.slice(2).forEach((d) => b.delete(d.ref))
+              b.commit().catch(() => {})
+            }
+          })
+          .catch(() => {})
+      }
+
       return normalizeSession(sessionData, docRef.id)
     },
 
     async update(options: { where: { id: string }; data: any }): Promise<AuthSession> {
+      invalidateSessionCache()
       const docRef = firestore.collection('authSessions').doc(options.where.id)
       const dataToUpdate: any = { ...options.data }
 
@@ -724,6 +785,7 @@ export const prisma = {
     },
 
     async updateMany(options: { where: any; data: any }): Promise<{ count: number }> {
+      invalidateSessionCache()
       let query: FirebaseFirestore.Query = firestore.collection('authSessions')
 
       if (options.where.clientId) {
@@ -757,6 +819,11 @@ export const prisma = {
       if (!options?.where || Object.keys(options.where).length === 0) {
         const snap = await firestore.collection('authSessions').count().get()
         return snap.data().count
+      }
+      // If querying active sessions (like dashboard/stats does), use the memory cache!
+      if (options.where.isActive === true) {
+        const activeSessions = await getActiveSessionsCached()
+        return activeSessions.filter((s) => matchesFilter(s, options.where)).length
       }
       const sessions = await this.findMany({ where: options.where })
       return sessions.length

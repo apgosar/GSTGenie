@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -25,8 +25,11 @@ export default function Sidebar() {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const fetchStats = useCallback(async () => {
+    // If the browser tab is hidden / in background, skip fetching to save reads
+    if (typeof document !== 'undefined' && document.hidden) return
+
     try {
-      const r = await fetch('/api/dashboard/stats', { cache: 'no-store' })
+      const r = await fetch('/api/dashboard/stats')
       if (r.ok) {
         const d = await r.json()
         setStats({
@@ -41,19 +44,28 @@ export default function Sidebar() {
 
   useEffect(() => {
     fetchStats()
-    const interval = setInterval(fetchStats, 15000)
+
+    // Poll once every 60 seconds while active (reduces API load by 75%)
+    const interval = setInterval(fetchStats, 60000)
+
+    // Fetch immediately when tab becomes visible or gains focus
+    const handleVisibilityChange = () => {
+      if (!document.hidden) fetchStats()
+    }
     const handleFocus = () => fetchStats()
     const handleStatsUpdated = () => fetchStats()
 
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('focus', handleFocus)
     window.addEventListener('stats-updated', handleStatsUpdated)
 
     return () => {
       clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('stats-updated', handleStatsUpdated)
     }
-  }, [fetchStats, pathname])
+  }, [fetchStats])
 
   // Automatically close drawer when route changes
   useEffect(() => {
