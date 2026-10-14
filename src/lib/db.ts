@@ -207,6 +207,13 @@ function matchesCondition(docValue: any, condition: any): boolean {
     if ('notIn' in condition && Array.isArray(condition.notIn)) {
       matches = matches && !condition.notIn.includes(docValue)
     }
+    if ('not' in condition) {
+      if (typeof condition.not === 'object' && condition.not !== null) {
+        matches = matches && !matchesCondition(docValue, condition.not)
+      } else {
+        matches = matches && docValue !== condition.not
+      }
+    }
     if ('gt' in condition) {
       const v = docValue instanceof Date ? docValue.getTime() : new Date(docValue).getTime()
       const t = condition.gt instanceof Date ? condition.gt.getTime() : new Date(condition.gt).getTime()
@@ -291,6 +298,15 @@ function matchesFilter(
   }
 
   return true
+}
+
+function hasSessionCondition(whereOrInclude: any): boolean {
+  if (!whereOrInclude || typeof whereOrInclude !== 'object') return false
+  if ('sessions' in whereOrInclude) return true
+  if (Array.isArray(whereOrInclude.OR)) return whereOrInclude.OR.some(hasSessionCondition)
+  if (Array.isArray(whereOrInclude.AND)) return whereOrInclude.AND.some(hasSessionCondition)
+  if (whereOrInclude.NOT) return hasSessionCondition(whereOrInclude.NOT)
+  return false
 }
 
 function sortDocs<T>(docs: T[], orderBy: any): T[] {
@@ -400,7 +416,7 @@ export const prisma = {
       let noticeMap: Map<string, Notice[]> | undefined
       let noticeCountMap: Map<string, number> | undefined
 
-      if (options?.include?.sessions || options?.where?.sessions) {
+      if (options?.include?.sessions || hasSessionCondition(options?.where)) {
         const activeSessions = await getActiveSessionsCached()
         sessionMap = new Map()
         activeSessions.forEach((s) => {

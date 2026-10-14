@@ -43,19 +43,35 @@ export async function GET() {
       newNoticeCounts.map((n) => [n.clientId, n._count.id])
     )
 
-    const enriched = clients.map((c) => ({
-      ...c,
-      newNoticeCount: newCountMap[c.id] ?? 0,
-      activeSession: c.sessions[0] ?? null,
-      totalNotices: c._count.notices,
-      lastNoticeFetchedAt: c.fetchLogs[0]?.fetchedAt ?? null,
-      lastFetchStatus: c.fetchLogs[0]?.status ?? null,
-    }))
+    const now = new Date()
+    const enriched = clients.map((c) => {
+      const session = c.sessions[0] ?? null
+      const isSessionActive = Boolean(session && session.isActive)
+      const isSessionUnexpired = Boolean(session && new Date(session.expiresAt) > now)
+      const isSessionValid = Boolean(c.status === 'authenticated' && isSessionActive && isSessionUnexpired)
 
-    // Sort: auth issues first, then by new notices
+      let effectiveStatus = c.status
+      if (c.status === 'authenticated' && !isSessionValid) {
+        effectiveStatus = 'expired'
+      }
+
+      return {
+        ...c,
+        status: effectiveStatus,
+        rawStatus: c.status,
+        isSessionValid,
+        newNoticeCount: newCountMap[c.id] ?? 0,
+        activeSession: session,
+        totalNotices: c._count.notices,
+        lastNoticeFetchedAt: c.fetchLogs[0]?.fetchedAt ?? null,
+        lastFetchStatus: c.fetchLogs[0]?.status ?? null,
+      }
+    })
+
+    // Sort: auth issues first (expired, pending, error), then by new notices
     enriched.sort((a, b) => {
-      const aIssue = ['error', 'expired'].includes(a.status) ? 0 : 1
-      const bIssue = ['error', 'expired'].includes(b.status) ? 0 : 1
+      const aIssue = ['error', 'expired', 'pending'].includes(a.status) ? 0 : 1
+      const bIssue = ['error', 'expired', 'pending'].includes(b.status) ? 0 : 1
       if (aIssue !== bIssue) return aIssue - bIssue
       return b.newNoticeCount - a.newNoticeCount
     })

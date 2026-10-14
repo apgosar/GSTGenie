@@ -29,7 +29,18 @@ export async function GET(
     if (!client) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
     }
-    return NextResponse.json(client)
+
+    const now = new Date()
+    const activeSession = client.sessions?.find((s: any) => s.isActive)
+    const isSessionValid = Boolean(activeSession && new Date(activeSession.expiresAt) > now)
+    const effectiveStatus = client.status === 'authenticated' && !isSessionValid ? 'expired' : client.status
+
+    return NextResponse.json({
+      ...client,
+      status: effectiveStatus,
+      rawStatus: client.status,
+      isSessionValid,
+    })
   } catch (error) {
     console.error('GET /api/clients/[id] error:', error)
     return NextResponse.json({ error: 'Failed to fetch client' }, { status: 500 })

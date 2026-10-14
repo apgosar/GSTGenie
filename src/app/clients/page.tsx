@@ -20,9 +20,9 @@ function ClientFilterSync({
   const searchParams = useSearchParams()
   useEffect(() => {
     const status = searchParams.get('status') || searchParams.get('filter')
-    if (status === 'authenticated') {
+    if (status === 'authenticated' || status === 'active') {
       onFilterChange('authenticated')
-    } else if (status === 'pending' || status === 'error' || status === 'issues') {
+    } else if (status === 'pending' || status === 'error' || status === 'issues' || status === 'expired') {
       onFilterChange('pending')
     } else if (status === 'new_notices' || status === 'new') {
       onFilterChange('new_notices')
@@ -302,7 +302,7 @@ export default function ClientsPage() {
     const now = new Date()
     const minsLeft = differenceInMinutes(expiresAt, now)
 
-    if (minsLeft <= 0) return 'Expired'
+    if (minsLeft <= 0) return null
     const hrs = Math.floor(minsLeft / 60)
     const mins = minsLeft % 60
     return hrs > 0 ? `${hrs}h ${mins}m left` : `${mins}m left`
@@ -337,7 +337,7 @@ export default function ClientsPage() {
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Clients Directory</h1>
           <p style={{ color: 'rgb(100, 116, 139)', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
-            {clients.length} registered client{clients.length !== 1 ? 's' : ''} · {authenticatedCount} authenticated · {totalNoticesCount} total notices
+            {clients.length} registered client{clients.length !== 1 ? 's' : ''} · {authenticatedCount} active session{authenticatedCount !== 1 ? 's' : ''} {pendingCount > 0 ? `(${pendingCount} need re-auth)` : ''} · {totalNoticesCount} total notices
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -390,14 +390,14 @@ export default function ClientsPage() {
             style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
             onClick={() => setStatusFilter('authenticated')}
           >
-            🟢 Authenticated ({authenticatedCount})
+            🟢 Active Sessions ({authenticatedCount})
           </button>
           <button
             className={`btn ${statusFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
             onClick={() => setStatusFilter('pending')}
           >
-            🟠 OTP Pending ({pendingCount})
+            🟠 Need Re-auth ({pendingCount})
           </button>
           <button
             className={`btn ${statusFilter === 'new_notices' ? 'btn-primary' : 'btn-secondary'}`}
@@ -491,6 +491,24 @@ export default function ClientsPage() {
                               ⏱️ {remainingTime}
                             </div>
                           )}
+                        </div>
+                      ) : client.status === 'expired' ? (
+                        <div>
+                          <span className="badge badge-error" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: 'rgb(254, 242, 242)', color: 'rgb(220, 38, 38)', borderColor: 'rgb(254, 202, 202)' }}>
+                            <Clock size={11} /> Session Expired
+                          </span>
+                          <div style={{ fontSize: '0.7rem', color: 'rgb(185, 28, 28)', marginTop: '0.2rem' }}>
+                            Re-auth required
+                          </div>
+                        </div>
+                      ) : client.status === 'error' ? (
+                        <div>
+                          <span className="badge badge-error" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: 'rgb(254, 242, 242)', color: 'rgb(220, 38, 38)', borderColor: 'rgb(254, 202, 202)' }}>
+                            <AlertTriangle size={11} /> Auth Error
+                          </span>
+                          <div style={{ fontSize: '0.7rem', color: 'rgb(185, 28, 28)', marginTop: '0.2rem' }}>
+                            Re-auth required
+                          </div>
                         </div>
                       ) : (
                         <div>
