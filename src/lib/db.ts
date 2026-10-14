@@ -767,17 +767,22 @@ export const prisma = {
 
       await docRef.set(sessionData)
 
-      // Auto-prune old inactive sessions for this client so they never accumulate
+      // Auto-prune old inactive sessions for this client (older than 2 hours) so they never accumulate
       if (sessionData.clientId) {
+        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
         firestore
           .collection('authSessions')
           .where('clientId', '==', sessionData.clientId)
           .where('isActive', '==', false)
           .get()
           .then((oldSnap) => {
-            if (oldSnap.size > 2) {
+            const staleDocs = oldSnap.docs.filter((d) => {
+              const dt = d.data().createdAt ? toDate(d.data().createdAt) : new Date(0)
+              return dt < twoHoursAgo && d.id !== docRef.id
+            })
+            if (staleDocs.length > 2) {
               const b = firestore.batch()
-              oldSnap.docs.slice(2).forEach((d) => b.delete(d.ref))
+              staleDocs.slice(2).forEach((d) => b.delete(d.ref))
               b.commit().catch(() => {})
             }
           })

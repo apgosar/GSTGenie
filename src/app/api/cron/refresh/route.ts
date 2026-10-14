@@ -380,6 +380,7 @@ export async function POST(req: NextRequest) {
                   await prisma.authSession.update({
                     where: { id: item.sessionId },
                     data: {
+                      clientId: item.clientId,
                       txn: finalTxn,
                       isActive: true,
                       authError: null,

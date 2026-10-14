@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
       await prisma.authSession.update({
         where: { id: sessionId },
         data: {
+          clientId,
           txn: authorizedToken,
           isActive: true,
           authError: null,
