@@ -17,7 +17,7 @@ export async function runTokenRefreshCycle() {
     const now = new Date()
     const thresholdTime = new Date(now.getTime() - REFRESH_THRESHOLD_MS)
 
-    const sessions = await prisma.authSession.findMany({
+    const rawSessions = await prisma.authSession.findMany({
       where: {
         isActive: true,
         lastRefreshedAt: { lt: thresholdTime },
@@ -25,11 +25,13 @@ export async function runTokenRefreshCycle() {
       include: { client: true },
     })
 
+    const sessions = rawSessions.filter((s) => s.client && s.client.gstin)
+
     for (const session of sessions) {
       const { client } = session
-      const stateCode = getStateCodeFromGSTIN(client.gstin) || client.stateCode || client.gstin.slice(0, 2)
 
       try {
+        const stateCode = getStateCodeFromGSTIN(client.gstin) || client.stateCode || client.gstin.slice(0, 2)
         const result = await refreshToken(
           DEFAULT_CA_EMAIL,
           session.txn,

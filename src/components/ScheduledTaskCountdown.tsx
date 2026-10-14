@@ -39,7 +39,7 @@ function getNextTokenRefreshIST(): Date {
   const istMinutes = istNow.getUTCMinutes()
   const istSeconds = istNow.getUTCSeconds()
 
-  const scheduleHours = [0, 5, 10, 15, 20]
+  const scheduleHours = [0, 4, 8, 12, 16, 20]
   const nextHour = scheduleHours.find((h) => h > istHours || (h === istHours && istMinutes === 0 && istSeconds === 0))
 
   let targetDateIST: Date
@@ -178,7 +178,7 @@ export default function ScheduledTaskCountdown({ variant = 'dashboard' }: { vari
         >
           <Zap size={14} color="rgb(124, 58, 237)" />
           <div>
-            <span style={{ color: 'rgb(100, 116, 139)', fontSize: '0.7rem' }}>5-Hr Refresh: </span>
+            <span style={{ color: 'rgb(100, 116, 139)', fontSize: '0.7rem' }}>4-Hr Refresh: </span>
             <strong style={{ color: 'rgb(109, 40, 217)', fontFamily: 'ui-monospace, monospace' }}>
               {formatCountdown(tokenTime, false)}
             </strong>

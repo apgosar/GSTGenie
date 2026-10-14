@@ -71,6 +71,10 @@ export async function POST(req: NextRequest) {
           expiresAt,
         },
       })
+      await prisma.authSession.updateMany({
+        where: { clientId, isActive: true, id: { not: sessionId } },
+        data: { isActive: false },
+      })
     } else {
       await prisma.authSession.updateMany({
         where: { clientId, isActive: true },

@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { refreshToken, requestOTP, getAuthToken } from '@/lib/whitebooks-api'
 import { fetchAllRecentGSTEmails } from '@/lib/gmail-otp'
@@ -29,9 +29,11 @@ export async function POST(req: NextRequest) {
     // -------------------------------------------------------------
     // PHASE 1: REFRESH CURRENTLY ACTIVE SESSIONS
     // -------------------------------------------------------------
+    // Only refresh sessions that are active and have not expired yet
     const rawSessions = await prisma.authSession.findMany({
       where: {
         isActive: true,
+        expiresAt: { gt: now },
       },
       include: {
         client: true,
@@ -39,13 +41,15 @@ export async function POST(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
     })
 
-    // De-duplicate to latest active session per client
+    // De-duplicate to latest active session per client and ensure valid client exists
     const seenClientIds = new Set<string>()
-    const activeSessions = rawSessions.filter((s) => {
-      if (seenClientIds.has(s.clientId)) return false
-      seenClientIds.add(s.clientId)
-      return true
-    })
+    const activeSessions = rawSessions
+      .filter((s) => s.client && s.client.id && s.client.gstin)
+      .filter((s) => {
+        if (!s.clientId || seenClientIds.has(s.clientId)) return false
+        seenClientIds.add(s.clientId)
+        return true
+      })
 
     let refreshedCount = 0
     let refreshFailedCount = 0
@@ -59,9 +63,10 @@ export async function POST(req: NextRequest) {
         await Promise.all(
           chunk.map(async (session) => {
             const { client } = session
-            const stateCode = getStateCodeFromGSTIN(client.gstin) || client.stateCode || client.gstin.slice(0, 2)
+            if (!client || !client.gstin) return
 
             try {
+              const stateCode = getStateCodeFromGSTIN(client.gstin) || client.stateCode || client.gstin.slice(0, 2)
               const result = await refreshToken(
                 DEFAULT_CA_EMAIL,
                 session.txn,

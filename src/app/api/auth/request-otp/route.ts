@@ -67,10 +67,11 @@ export async function POST(req: NextRequest) {
     }
 
     const txnToStore = result.txn || 'pending'
+    const now = new Date()
 
-    // Deactivate old sessions
+    // Deactivate old expired sessions
     await prisma.authSession.updateMany({
-      where: { clientId, isActive: true },
+      where: { clientId, expiresAt: { lt: now } },
       data: { isActive: false },
     })
 
@@ -85,10 +86,17 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    await prisma.client.update({
-      where: { id: clientId },
-      data: { status: 'pending' },
+    // Only set client status to 'pending' if they don't already have a valid active session
+    const hasLiveSession = await prisma.authSession.findFirst({
+      where: { clientId, isActive: true, expiresAt: { gt: now } },
     })
+
+    if (!hasLiveSession) {
+      await prisma.client.update({
+        where: { id: clientId },
+        data: { status: 'pending' },
+      })
+    }
 
     try {
       await prisma.fetchLog.create({

@@ -152,14 +152,14 @@ if ($serviceUrl) {
   Write-Host ""
   Write-Host "5. Configuring Cloud Scheduler automated cron jobs..." -ForegroundColor Yellow
 
-  # Job 1: 5-Hour Token Refresh
+  # Job 1: 4-Hour Token Refresh
   $job1 = "gst-token-refresh"
   $null = gcloud scheduler jobs describe $job1 --location $Region --project $ProjectId 2>&1
   if ($LASTEXITCODE -eq 0) {
     gcloud scheduler jobs delete $job1 --location $Region --project $ProjectId --quiet | Out-Null
   }
   gcloud scheduler jobs create http $job1 `
-    --schedule "0 */5 * * *" `
+    --schedule "0 */4 * * *" `
     --uri "$serviceUrl/api/cron/refresh" `
     --http-method POST `
     --headers "x-cron-secret=$CronSecret" `
@@ -167,9 +167,9 @@ if ($serviceUrl) {
     --location $Region `
     --project $ProjectId `
     --attempt-deadline "300s" `
-    --description "Automated GST 5-hour Token Refresh"
+    --description "Automated GST 4-hour Token Refresh"
 
-  Write-Host "[OK] Scheduled: Token Refresh every 5 hours (0 */5 * * *)" -ForegroundColor Green
+  Write-Host "[OK] Scheduled: Token Refresh every 4 hours (0 */4 * * *)" -ForegroundColor Green
 
   # Job 2: Weekly Notice Fetch on Mondays at 10:00 AM IST
   $job2 = "gst-notice-fetch"

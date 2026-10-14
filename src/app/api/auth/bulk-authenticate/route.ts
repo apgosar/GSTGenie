@@ -139,9 +139,9 @@ export async function POST(req: NextRequest) {
             continue
           }
 
-          // Deactivate old sessions
+          // Deactivate old expired sessions
           await prisma.authSession.updateMany({
-            where: { clientId: client.id, isActive: true },
+            where: { clientId: client.id, expiresAt: { lt: now } },
             data: { isActive: false },
           })
 
@@ -156,10 +156,16 @@ export async function POST(req: NextRequest) {
             },
           })
 
-          await prisma.client.update({
-            where: { id: client.id },
-            data: { status: 'pending' },
+          const hasLiveSession = await prisma.authSession.findFirst({
+            where: { clientId: client.id, isActive: true, expiresAt: { gt: now } },
           })
+
+          if (!hasLiveSession) {
+            await prisma.client.update({
+              where: { id: client.id },
+              data: { status: 'pending' },
+            })
+          }
 
           await prisma.fetchLog.create({
             data: {
@@ -325,9 +331,9 @@ export async function POST(req: NextRequest) {
             continue
           }
 
-          // Deactivate old sessions
+          // Deactivate old expired sessions
           await prisma.authSession.updateMany({
-            where: { clientId: client.id, isActive: true },
+            where: { clientId: client.id, expiresAt: { lt: now } },
             data: { isActive: false },
           })
 
@@ -342,10 +348,16 @@ export async function POST(req: NextRequest) {
             },
           })
 
-          await prisma.client.update({
-            where: { id: client.id },
-            data: { status: 'pending' },
+          const hasLiveSession = await prisma.authSession.findFirst({
+            where: { clientId: client.id, isActive: true, expiresAt: { gt: now } },
           })
+
+          if (!hasLiveSession) {
+            await prisma.client.update({
+              where: { id: client.id },
+              data: { status: 'pending' },
+            })
+          }
 
           // Record successful trigger in fetchLog
           await prisma.fetchLog.create({
@@ -488,6 +500,11 @@ export async function POST(req: NextRequest) {
                   lastRefreshedAt: now,
                   expiresAt,
                 },
+              })
+
+              await prisma.authSession.updateMany({
+                where: { clientId: item.clientId, isActive: true, id: { not: item.sessionId } },
+                data: { isActive: false },
               })
 
               await prisma.client.update({

@@ -343,7 +343,7 @@ export default function SettingsPage() {
                 Token Refresh Automation
               </h3>
               <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgb(124, 58, 237)', margin: '0.5rem 0' }}>
-                Every 5 Hours (0 */5 * * *)
+                Every 4 Hours (0 */4 * * *)
               </div>
               <p style={{ fontSize: '0.75rem', color: 'rgb(71, 85, 105)', margin: '0 0 0.75rem', lineHeight: 1.5 }}>
                 Refreshes active 6-hour auth tokens before expiry so client sessions remain permanently active without requiring repetitive manual OTP verification.
