@@ -331,3 +331,149 @@ export async function sendNoticeRunReportEmail(report: NoticeRunReport): Promise
     }
   }
 }
+
+export interface TokenRefreshFailureItem {
+  clientName: string
+  gstin: string
+  error: string
+}
+
+export interface TokenRefreshAlertDetails {
+  failedCount: number
+  totalChecked: number
+  failedClients: TokenRefreshFailureItem[]
+  fatalError?: string
+}
+
+export async function sendTokenRefreshAlertEmail(
+  details: TokenRefreshAlertDetails
+): Promise<{ success: boolean; count: number; error?: string }> {
+  try {
+    const recipients = await getNotificationEmails()
+    if (recipients.length === 0) {
+      console.warn('[TokenRefreshAlert] No notification emails configured.')
+      return { success: false, count: 0, error: 'No recipients configured' }
+    }
+
+    const transporter = getMailerTransport()
+    const sender = process.env.GMAIL_USER || 'gnggst2026@gmail.com'
+    const nowIst = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+
+    const subject = details.fatalError
+      ? `🚨 GST Genie CRITICAL: Token Refresh Cron Crashed (${nowIst} IST)`
+      : `⚠️ GST Genie Alert: Token Refresh Failed for ${details.failedCount} Client${details.failedCount > 1 ? 's' : ''}`
+
+    const rowsHtml = details.failedClients
+      .map(
+        (c) => `
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 10px 12px; font-weight: 600; color: #0f172a;">${c.clientName}</td>
+          <td style="padding: 10px 12px; font-family: monospace; color: #475569;">${c.gstin}</td>
+          <td style="padding: 10px 12px; color: #dc2626; font-size: 13px;">${c.error}</td>
+        </tr>
+      `
+      )
+      .join('')
+
+    const htmlBody = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #fecaca; border-radius: 8px; overflow: hidden; background: #ffffff;">
+        <div style="background: #dc2626; padding: 20px; color: white; text-align: center;">
+          <h1 style="margin: 0; font-size: 20px; font-weight: 700;">GST Genie &mdash; Token Refresh Alert</h1>
+          <p style="margin: 5px 0 0; font-size: 13px; opacity: 0.95;">Automated Background Refresh Warning</p>
+        </div>
+
+        <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
+          <p style="margin-top: 0; font-size: 14px;">
+            The automated 4-hour background token refresh cycle encountered errors at <strong>${nowIst} IST</strong>.
+          </p>
+
+          ${
+            details.fatalError
+              ? `<div style="background: #fef2f2; border: 1px solid #fca5a5; padding: 12px 16px; border-radius: 6px; color: #991b1b; font-size: 13px; margin-bottom: 16px;">
+                  <strong>Fatal Error:</strong> ${details.fatalError}
+                </div>`
+              : ''
+          }
+
+          <div style="display: flex; gap: 16px; margin: 16px 0;">
+            <div style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; text-align: center;">
+              <div style="font-size: 12px; color: #64748b; font-weight: 600;">ACTIVE CHECKED</div>
+              <div style="font-size: 22px; font-weight: 700; color: #0f172a;">${details.totalChecked}</div>
+            </div>
+            <div style="flex: 1; background: #fef2f2; border: 1px solid #fecaca; padding: 12px; border-radius: 6px; text-align: center;">
+              <div style="font-size: 12px; color: #dc2626; font-weight: 600;">REFRESH FAILED</div>
+              <div style="font-size: 22px; font-weight: 700; color: #dc2626;">${details.failedCount}</div>
+            </div>
+          </div>
+
+          ${
+            details.failedClients.length > 0
+              ? `
+              <h3 style="font-size: 14px; font-weight: 600; margin: 20px 0 8px; color: #0f172a;">
+                Affected Client Accounts (${details.failedClients.length})
+              </h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px; background: #fafafa; border: 1px solid #e2e8f0; border-radius: 6px;">
+                <thead>
+                  <tr style="background: #f1f5f9; text-align: left; border-bottom: 1px solid #cbd5e1;">
+                    <th style="padding: 8px 12px; font-size: 12px; color: #475569;">Client</th>
+                    <th style="padding: 8px 12px; font-size: 12px; color: #475569;">GSTIN</th>
+                    <th style="padding: 8px 12px; font-size: 12px; color: #475569;">Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml}
+                </tbody>
+              </table>
+            `
+              : ''
+          }
+
+          <div style="margin-top: 24px; text-align: center;">
+            <a href="https://gst-genie-q7addn2xsq-el.a.run.app" style="display: inline-block; background: #dc2626; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 600;">
+              Open Dashboard to Re-Authenticate &rarr;
+            </a>
+            <p style="margin: 16px 0 0; font-size: 11px; color: #94a3b8;">
+              Dispatched automatically by GST Genie &middot; <a href="https://gst-genie-q7addn2xsq-el.a.run.app/settings" style="color: #64748b;">Manage Notification Settings</a>
+            </p>
+          </div>
+        </div>
+      </div>
+    `
+
+    const plainTextBody = [
+      `GST Genie - Token Refresh Alert (${nowIst} IST)`,
+      `==================================================`,
+      `Active Checked: ${details.totalChecked}`,
+      `Refresh Failed: ${details.failedCount}`,
+      details.fatalError ? `Fatal Error: ${details.fatalError}` : '',
+      '',
+      details.failedClients.length > 0 ? '--- FAILED CLIENTS ---' : '',
+      ...details.failedClients.map((f) => `* ${f.clientName} (${f.gstin}): ${f.error}`),
+      '',
+      'Open Dashboard: https://gst-genie-q7addn2xsq-el.a.run.app',
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    const info = await transporter.sendMail({
+      from: `"GST Genie Alerts" <${sender}>`,
+      to: recipients.join(', '),
+      subject,
+      text: plainTextBody,
+      html: htmlBody,
+    })
+
+    console.log(`[TokenRefreshAlert] Alert email dispatched to: ${recipients.join(', ')}`, {
+      messageId: info.messageId,
+    })
+    return { success: true, count: recipients.length }
+  } catch (err) {
+    console.error('[TokenRefreshAlert] Failed to send alert email:', err)
+    return {
+      success: false,
+      count: 0,
+      error: err instanceof Error ? err.message : 'Failed to send alert email',
+    }
+  }
+}
+

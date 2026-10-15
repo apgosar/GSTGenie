@@ -119,7 +119,7 @@ try {
     --memory 512Mi `
     --cpu 1 `
     --concurrency 80 `
-    --max-instances 1 `
+    --max-instances 3 `
     --env-vars-file "env-vars.yaml" `
     --quiet
   $deployExitCode = $LASTEXITCODE
@@ -167,6 +167,9 @@ if ($serviceUrl) {
     --location $Region `
     --project $ProjectId `
     --attempt-deadline "300s" `
+    --max-retry-duration "30m" `
+    --min-backoff-duration "15s" `
+    --max-doublings 3 `
     --description "Automated GST 4-hour Token Refresh"
 
   Write-Host "[OK] Scheduled: Token Refresh every 4 hours (0 */4 * * *)" -ForegroundColor Green
