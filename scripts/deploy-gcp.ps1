@@ -167,10 +167,12 @@ if ($serviceUrl) {
     --location $Region `
     --project $ProjectId `
     --attempt-deadline "300s" `
-    --max-retry-duration "30m" `
-    --min-backoff-duration "15s" `
+    --max-retry-attempts 3 `
+    --min-backoff "15s" `
+    --max-backoff "300s" `
+    --max-retry-duration "1800s" `
     --max-doublings 3 `
-    --description "Automated GST 4-hour Token Refresh"
+    --description "Automated GST 4-hour Silent Token Refresh with Retries"
 
   Write-Host "[OK] Scheduled: Token Refresh every 4 hours (0 */4 * * *)" -ForegroundColor Green
 
